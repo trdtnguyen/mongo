@@ -41,6 +41,17 @@
 #define NVALGRIND
 #endif
 
+#if defined (UNIV_PMEMOBJ_LOG) || defined (UNIV_PMEMOBJ_BUF) || defined (UNIV_PMEMOBJ_WAL)
+#include <libpmem.h>
+#include <libpmemobj.h>
+//#include "mongo/db/pmem/my_pmemobj.h"
+#include "third_party/wiredtiger/src/pmem/my_pmemobj.h"
+
+char  PMEM_FILE_PATH [PMEM_MAX_FILE_NAME_LENGTH];
+extern PMEM_WRAPPER* gb_pmw;
+
+#endif
+
 #include <memory>
 
 #include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
@@ -475,11 +486,6 @@ WiredTigerKVEngine::WiredTigerKVEngine(const std::string& canonicalName,
 
     std::stringstream ss;
 
-#if defined(UNIV_PMEMOBJ_LOG) || defined(UNIV_PMEMOBJ_DBW) || defined (UNIV_PMEMOBJ_BUF) || defined (UNIV_PMEMOBJ_WAL) 
-#if defined (UNIV_PMEMOBJ_BUF)
-	printf("\n======= Hello PMEMOBJ Buffer from VLDB lab ========\n");
-#endif //UNIV_PMEMOJB_BUF
-#endif
 
     ss << "create,";
     ss << "cache_size=" << cacheSizeMB << "M,";
@@ -546,6 +552,15 @@ WiredTigerKVEngine::WiredTigerKVEngine(const std::string& canonicalName,
         ss << ",log=(enabled=false),";
     }
 
+#if defined(UNIV_PMEMOBJ_LOG) || defined(UNIV_PMEMOBJ_DBW) || defined (UNIV_PMEMOBJ_BUF) || defined (UNIV_PMEMOBJ_WAL) 
+#if defined (UNIV_PMEMOBJ_BUF)
+	printf("\n======= Hello PMEMOBJ Buffer from VLDB lab ========\n");
+	//size_t pool_size = srv_pmem_pool_size * 1024 * 1024;
+	size_t pool_size = 1 * 1024 * 1024;
+	gb_pmw = pm_wrapper_create(PMEM_FILE_PATH, pool_size);
+
+#endif //UNIV_PMEMOJB_BUF
+#endif
     string config = ss.str();
     log() << "wiredtiger_open config: " << config;
     openWiredTiger(path, _eventHandler.getWtEventHandler(), config, &_conn, &_fileVersion);

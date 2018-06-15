@@ -1,8 +1,8 @@
 /* 
  * Author; Trong-Dat Nguyen
- * MySQL REDO log with NVDIMM
+ * MongoDB REDO log with NVDIMM
  * Using libpmemobj
- * Copyright (c) 2017 VLDB Lab - Sungkyunkwan University
+ * Copyright (c) 2018 VLDB Lab - Sungkyunkwan University
  * */
 
 
