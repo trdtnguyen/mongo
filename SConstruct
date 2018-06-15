@@ -3085,13 +3085,22 @@ def doConfigure(myenv):
         if not conf.CheckCXXHeader( "sqlite3.h" ):
             myenv.ConfError("Cannot find sqlite headers")
         conf.FindSysLibDep("sqlite", ["sqlite3"])
-
+#tdnguyen modify
+# The original
+#    conf.env.Append(
+#        CPPDEFINES=[
+#            "BOOST_SYSTEM_NO_DEPRECATED",
+#            "BOOST_MATH_NO_LONG_DOUBLE_MATH_FUNCTIONS",
+#        ]
+#    )
+# The modified
     conf.env.Append(
         CPPDEFINES=[
             "BOOST_SYSTEM_NO_DEPRECATED",
             "BOOST_MATH_NO_LONG_DOUBLE_MATH_FUNCTIONS",
         ]
     )
+# End tdnguyen modify
 
     if use_system_version_of_library("boost"):
         if not conf.CheckCXXHeader( "boost/filesystem/operations.hpp" ):

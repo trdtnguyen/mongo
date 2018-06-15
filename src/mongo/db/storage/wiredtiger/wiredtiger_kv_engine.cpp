@@ -474,12 +474,20 @@ WiredTigerKVEngine::WiredTigerKVEngine(const std::string& canonicalName,
     _previousCheckedDropsQueued = _clockSource->now();
 
     std::stringstream ss;
+
+#if defined(UNIV_PMEMOBJ_LOG) || defined(UNIV_PMEMOBJ_DBW) || defined (UNIV_PMEMOBJ_BUF) || defined (UNIV_PMEMOBJ_WAL) 
+#if defined (UNIV_PMEMOBJ_BUF)
+	printf("\n======= Hello PMEMOBJ Buffer from VLDB lab ========\n");
+#endif //UNIV_PMEMOJB_BUF
+#endif
+
     ss << "create,";
     ss << "cache_size=" << cacheSizeMB << "M,";
     ss << "session_max=20000,";
     ss << "eviction=(threads_min=4,threads_max=4),";
     ss << "config_base=false,";
     ss << "statistics=(fast),";
+
 
     if (!WiredTigerSessionCache::isEngineCachingCursors()) {
         ss << "cache_cursors=false,";
