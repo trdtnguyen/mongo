@@ -3098,8 +3098,16 @@ def doConfigure(myenv):
         CPPDEFINES=[
             "BOOST_SYSTEM_NO_DEPRECATED",
             "BOOST_MATH_NO_LONG_DOUBLE_MATH_FUNCTIONS",
+            "UNIV_PMEMOBJ_BUF",
         ]
     )
+#    conf.env.Append(
+#        LIBS=[
+#            "pmem",
+#            "pmemobj",
+#        ]
+#    )
+    #conf.env.Append(CPPPATH=['/home/vldb/mongo-pmem/src/third_party/wiredtiger/src/pmem/',])
 # End tdnguyen modify
 
     if use_system_version_of_library("boost"):

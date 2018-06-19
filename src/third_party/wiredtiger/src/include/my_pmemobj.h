@@ -9,17 +9,17 @@
 #ifndef __PMEMOBJ_H__
 #define __PMEMOBJ_H__
 
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/types.h>                                                                      
-#include <sys/time.h> //for struct timeval, gettimeofday()
-#include <string.h>
-#include <stdint.h> //for uint64_t
-#include <math.h> //for log()
-#include <assert.h>
-#include <wchar.h>
-#include <unistd.h> //for access()
+//Common includes
+#include <stdio.h> //for FILE
+//#include <stdlib.h>
+//#include <sys/types.h>                                                                      
+//#include <sys/time.h> //for struct timeval, gettimeofday()
+//#include <string.h>
+//#include <stdint.h> //for uint64_t
+//#include <math.h> //for log()
+//#include <assert.h>
+//#include <wchar.h>
+#include <unistd.h> //for access() to check file exists
 
 //includes from DBMS
 //#include "univ.i"
@@ -31,10 +31,9 @@
 //#include "ut0new.h"
 
 //incldue from libpmem
-//#include "pmem_log.h"
+//#include "wt_internal.h"
 #include <libpmemobj.h>
-#include "my_pmem_common.h"
-//#include "pmem0buf.h"
+//#include "my_pmem_common.h"
 //cc -std=gnu99 ... -lpmemobj -lpmem
 
 //Mapping types between InnoDB and MongoDB
@@ -43,7 +42,102 @@ typedef uint64_t ulint;
 typedef void* os_thread_ret_t;
 typedef uint64_t os_offset_t;
 
+/*Common Defines, Consts*/
+#define PMEM_MAX_FILES 1000
+#define PMEM_MAX_FILE_NAME_LENGTH 10000
+#define PMEM_HASH_MASK 1653893711
 
+#define PMEM_ID_NONE -1 //ID not defined
+
+//random number for checking AIO
+#define PMEM_AIO_CHECK 7988
+
+//wait for a aio write, call when there is no free block
+#define PMEM_WAIT_FOR_WRITE 200
+#define PMEM_WAIT_FOR_FREE_LIST 10000
+
+//error handler
+#define PMEM_SUCCESS 0
+#define PMEM_ERROR -1
+
+#define TOID_ARRAY(x) TOID(x)
+
+#define PMEM_MB 1048576 //1024 * 1024
+#define PMEMOBJ_FILE_NAME "pmemobjfile"
+//OS_FILE_LOG_BLOCK_SIZE =512 is defined in os0file.h
+//static const size_t PMEM_MB = 1024 * 1024;
+static const size_t PMEM_MAX_LOG_BUF_SIZE = 1 * 1024 * PMEM_MB;
+static const size_t PMEM_PAGE_SIZE = 16*1024; //16KB
+static const size_t PMEM_MAX_DBW_PAGES= 128; // 2 * extent_size
+
+
+//static uint64_t PMEM_N_BUCKETS=64;
+//static uint64_t PMEM_BUCKET_SIZE=128;
+//static double PMEM_BUF_FLUSH_PCT=1;
+//
+//static uint64_t PMEM_N_FLUSH_THREADS=32;
+//set this to large number to eliminate 
+//static uint64_t PMEM_PAGE_PER_BUCKET_BITS=32;
+
+// 1 < this_value < flusher->size (32)
+//static uint64_t PMEM_FLUSHER_WAKE_THRESHOLD=5;
+//static uint64_t PMEM_FLUSHER_WAKE_THRESHOLD=30;
+//
+//static FILE* debug_file = fopen("part_debug.txt","a");
+
+#define PMEM_MAX_LISTS_PER_BUCKET 2
+
+
+enum {
+	PMEM_READ = 1,
+	PMEM_WRITE = 2
+};
+//enum PMEM_OBJ_TYPES {
+//	UNKNOWN_TYPE,
+//	LOG_BUF_TYPE,
+//	DBW_TYPE,
+//	BUF_TYPE,
+//	META_DATA_TYPE
+//};
+typedef enum {
+	UNKNOWN_TYPE,
+	LOG_BUF_TYPE,
+	DBW_TYPE,
+	BUF_TYPE,
+	META_DATA_TYPE
+} PMEM_OBJ_TYPES;
+
+typedef enum {
+    PMEM_FREE_BLOCK = 1,
+    PMEM_IN_USED_BLOCK = 2,
+    PMEM_IN_FLUSH_BLOCK=3
+} PMEM_BLOCK_STATE ;
+enum pm_list_cleaner_state {
+	/** Not requested any yet.
+	Moved from FINISHED by the coordinator. */
+	LIST_CLEANER_STATE_NONE = 0,
+	/** Requested but not started flushing.
+	Moved from NONE by the coordinator. */
+	LIST_CLEANER_STATE_REQUESTED,
+	/** Flushing is on going.
+	Moved from REQUESTED by the worker. */
+	LIST_CLEANER_STATE_FLUSHING,
+	/** Flushing was finished.
+	Moved from FLUSHING by the worker. */
+	LIST_CLEANER_STATE_FINISHED
+};
+
+static inline int file_exists(char const *file);
+
+/*
+ *  * file_exists -- checks if file exists
+ *   */
+static inline int file_exists(char const *file)
+{
+	    return access(file, F_OK);
+}
+
+/*Convenient typedefs*/
 struct __pmem_wrapper;
 typedef struct __pmem_wrapper PMEM_WRAPPER;
 
@@ -90,10 +184,10 @@ struct __pmem_sort_obj;
 typedef struct __pmem_sort_obj PMEM_SORT_OBJ;
 
 //Do not use this struct until the research finish
-//struct __pmem_aio_param;
-//typedef struct __pmem_aio_param PMEM_AIO_PARAM;
-//struct __pmem_aio_param_arr;
-//typedef struct __pmem_aio_param_arr PMEM_AIO_PARAM_ARRAY;
+struct __pmem_aio_param;
+typedef struct __pmem_aio_param PMEM_AIO_PARAM;
+struct __pmem_aio_param_arr;
+typedef struct __pmem_aio_param_arr PMEM_AIO_PARAM_ARRAY;
 //End Do not use this struct until the research finish
 
 #endif //UNIV_PMEMOBJ_BUF
@@ -113,9 +207,13 @@ POBJ_LAYOUT_TOID(my_pmemobj, TOID(PMEM_BUF_BLOCK));
 POBJ_LAYOUT_END(my_pmemobj);
 
 
+////GLOBAL variables
+//PMEM_WRAPPER* gb_pmw = NULL;
+
 ////////////////////////// THE WRAPPER ////////////////////////
 /*The global wrapper*/
 struct __pmem_wrapper {
+
 	char name[PMEM_MAX_FILE_NAME_LENGTH];
 	PMEMobjpool* pop;
 	PMEM_LOG_BUF* plogbuf;
@@ -124,16 +222,25 @@ struct __pmem_wrapper {
 	PMEM_BUF* pbuf;
 #endif
 	bool is_new;
+
+	//GLOBAL variables
+	uint64_t PMEM_BUF_SIZE;
+
+	uint64_t PMEM_N_BUCKETS;
+	uint64_t PMEM_BUCKET_SIZE;
+	double PMEM_BUF_FLUSH_PCT;
+
+	uint64_t PMEM_N_FLUSH_THREADS;
+	uint64_t PMEM_FLUSHER_WAKE_THRESHOLD;
+	//WiredTiger integration
+	WT_SESSION_IMPL* session;
 };
-
-
-
 /* FUNCTIONS*/
-
-PMEM_WRAPPER*
+PMEM_WRAPPER* 
 pm_wrapper_create(
+		WT_SESSION_IMPL* session,
 		const char*		path,
-	   	const size_t	pool_size);
+		const size_t	pool_size);
 
 void
 pm_wrapper_free(PMEM_WRAPPER* pmw);
@@ -142,6 +249,19 @@ pm_wrapper_free(PMEM_WRAPPER* pmw);
 PMEMoid pm_pop_alloc_bytes(PMEMobjpool* pop, size_t size);
 void pm_pop_free(PMEMobjpool* pop);
 
+int
+pm_wrapper_buf_alloc_or_open(
+		PMEM_WRAPPER*		pmw,
+		const size_t		buf_size,
+		const size_t		page_size);
+
+int pm_wrapper_buf_close(PMEM_WRAPPER* pmw);
+
+int
+pm_wrapper_buf_alloc(
+		PMEM_WRAPPER*		pmw,
+		const size_t		size,
+		const size_t		page_size);
 
 ////////////////////// LOG BUFFER /////////////////////////////
 
@@ -311,11 +431,13 @@ struct __pmem_buf {
 	//TODO: find the mapping os_event_t in MongoDB
 	//os_event_t*  flush_events; //N flush events for N buckets
 	//os_event_t free_pool_event; //event for free_pool
+	WT_CONDVAR**  flush_conds; //N flush events for N buckets
+	WT_CONDVAR* free_pool_cond; //event for free_pool
 	
 
 	PMEMrwlock				param_lock;
 	//TODO: research AIO in MongoDB
-	//PMEM_AIO_PARAM_ARRAY* param_arrs;//circular array of pointers
+	PMEM_AIO_PARAM_ARRAY* param_arrs;//circular array of pointers
 	uint64_t			param_arr_size; //size of the array
 	uint64_t			cur_free_param; //circular index, where the next free params is
 	
@@ -395,25 +517,12 @@ struct __pmem_buf_bucket_stat {
 //bool pm_check_io(byte* frame, page_id_t  page_id);
 bool pm_check_io(byte* frame, uint64_t  page_id);
 
-void
-pm_wrapper_buf_alloc_or_open(
-		 PMEM_WRAPPER*		pmw,
-		 const size_t		buf_size,
-		 const size_t		page_size);
-
-void pm_wrapper_buf_close(PMEM_WRAPPER* pmw);
-
-int
-pm_wrapper_buf_alloc(
-		PMEM_WRAPPER*		pmw,
-	    const size_t		size,
-		const size_t		page_size);
 
 PMEM_BUF* pm_pop_get_buf(PMEMobjpool* pop);
 
 PMEM_BUF* 
 pm_pop_buf_alloc(
-		 PMEMobjpool*		pop,
+		 PMEM_WRAPPER*		pmw,
 		 const size_t		size,
 		 const size_t		page_size);
 
@@ -422,8 +531,7 @@ pm_buf_block_init(PMEMobjpool *pop, void *ptr, void *arg);
 
 void 
 pm_buf_lists_init(
-		PMEMobjpool*	pop,
-		PMEM_BUF*		buf, 
+		PMEM_WRAPPER*	pmw,
 		const size_t	total_size,
 		const size_t	page_size);
 
@@ -432,14 +540,13 @@ void
 pm_buf_single_list_init(
 		PMEMobjpool*				pop,
 		TOID(PMEM_BUF_BLOCK_LIST)	inlist,
-		size_t&						offset,
+		size_t*						offset,
 		struct list_constr_args*	args,
 		const size_t				n,
 		const size_t				page_size);
 int
 pm_buf_write(
-			PMEMobjpool*	pop,
-		   	PMEM_BUF*		buf,
+		   	PMEM_WRAPPER*		pmw,
 		   	//page_id_t		page_id,
 		   	//page_size_t		size,
 		   	uint64_t		page_id,
@@ -449,8 +556,7 @@ pm_buf_write(
 
 int
 pm_buf_write_no_free_pool(
-			PMEMobjpool*	pop,
-		   	PMEM_BUF*		buf,
+		   	PMEM_WRAPPER*		pmw,
 		   	//page_id_t		page_id,
 		   	//page_size_t		size,
 		   	uint64_t		page_id,
@@ -460,8 +566,7 @@ pm_buf_write_no_free_pool(
 
 int
 pm_buf_write_with_flusher(
-			PMEMobjpool*	pop,
-		   	PMEM_BUF*		buf,
+		   	PMEM_WRAPPER*		pmw,
 		   	//page_id_t		page_id,
 		   	//page_size_t		size,
 		   	uint64_t		page_id,
@@ -470,8 +575,7 @@ pm_buf_write_with_flusher(
 		   	bool			sync);
 int
 pm_buf_write_with_flusher_append(
-			PMEMobjpool*	pop,
-		   	PMEM_BUF*		buf,
+		   	PMEM_WRAPPER*		pmw,
 		   	//page_id_t		page_id,
 		   	//page_size_t		size,
 		   	uint64_t		page_id,
@@ -482,8 +586,7 @@ pm_buf_write_with_flusher_append(
 
 const PMEM_BUF_BLOCK*
 pm_buf_read(
-			PMEMobjpool*		pop,
-		   	PMEM_BUF*			buf,
+		   	PMEM_WRAPPER*			pmw,
 		   	//const page_id_t		page_id,
 		   	//const page_size_t	size,
 		   	const uint64_t		page_id,
@@ -493,8 +596,7 @@ pm_buf_read(
 
 const PMEM_BUF_BLOCK*
 pm_buf_read_lasted(
-			PMEMobjpool*		pop,
-		   	PMEM_BUF*			buf,
+			PMEM_WRAPPER*		pmw,
 		   	//const page_id_t		page_id,
 		   	//const page_size_t	size,
 		   	const uint64_t		page_id,
@@ -504,8 +606,7 @@ pm_buf_read_lasted(
 
 const PMEM_BUF_BLOCK*
 pm_buf_read_page_zero(
-			PMEMobjpool*		pop,
-		   	PMEM_BUF*			buf,
+		   	PMEM_WRAPPER*			pmw,
 			char*				file_name,
 		   	byte*				data);
 
@@ -516,25 +617,23 @@ pm_buf_flush_list(
 		   	PMEM_BUF_BLOCK_LIST*	plist);
 void
 pm_buf_resume_flushing(
-			PMEMobjpool*			pop,
-		   	PMEM_BUF*				buf);
+			PMEM_WRAPPER*			pmw);
+		   
 
 
 void
 pm_buf_handle_full_hashed_list(
-	PMEMobjpool*	pop,
-	PMEM_BUF*		buf,
+	PMEM_WRAPPER*		pmw,
 	uint64_t			hashed);
 
 void
 pm_buf_assign_flusher(
-	PMEM_BUF*				buf,
+	PMEM_WRAPPER*				pmw,
 	PMEM_BUF_BLOCK_LIST*	phashlist);
 
 void
 pm_buf_write_aio_complete(
-			PMEMobjpool*			pop,
-		   	PMEM_BUF*				buf,
+			PMEM_WRAPPER*			pmw,
 		   	TOID(PMEM_BUF_BLOCK)*	ptoid_block);
 
 PMEM_BUF* pm_pop_get_buf(PMEMobjpool* pop);
@@ -549,6 +648,7 @@ struct __pmem_flusher {
 
 	//TODO: find the ib_mutex_t mapping in MongoDB
 	//ib_mutex_t			mutex;
+	WT_SPINLOCK		flusher_lock;
 	//for worker
 	//TODO: find the mapping os_event_t in MongoDB
 	//os_event_t			is_req_not_empty; //signaled when there is a new flushing list added
@@ -556,6 +656,11 @@ struct __pmem_flusher {
 
 	//os_event_t			is_all_finished; //signaled when all workers are finished flushing and no pending request 
 	//os_event_t			is_all_closed; //signaled when all workers are closed 
+	WT_CONDVAR*			is_req_not_empty_cond; //signaled when there is a new flushing list added
+	WT_CONDVAR*			is_req_full_cond;
+
+	WT_CONDVAR*			is_all_finished_cond; //signaled when all workers are finished flushing and no pending request 
+	WT_CONDVAR*			is_all_closed_cond; //signaled when all workers are closed 
 	volatile uint64_t n_workers;
 
 	//the waiting_list
@@ -568,31 +673,45 @@ struct __pmem_flusher {
 
 	PMEM_BUF_BLOCK_LIST** flush_list_arr;
 };
-void
+int
 pm_flusher_init(
-				PMEM_BUF*		buf, 
+				PMEM_WRAPPER*		pmw, 
 				const size_t	size);
-void
-pm_buf_flusher_close(PMEM_BUF*	buf);
+int
+pm_buf_flusher_close(PMEM_WRAPPER*	pmw);
 
 
 // AIO 
 //TODO: research how MongoDB handle AIO
 
-//struct __pmem_aio_param {
-//	const char*         name;
-//	int       file;   //fid
-//	void*               buf; 
-//	os_offset_t         offset;
-//	ulint               n;   
+struct __pmem_aio_param {
+	const char*         name;
+	int       file;   //fid
+	void*               buf; 
+	//os_offset_t         offset;
+	uint64_t         offset;
+	ulint               n;   
 //	fil_node_t*         m1;  
-//	void*               m2;  
-//};
-//struct __pmem_aio_param_arr {
-//	bool    is_free;
-//	PMEM_AIO_PARAM* params;
-//};
+	int*				m1;  
+	void*               m2;  
+};
+struct __pmem_aio_param_arr {
+	bool    is_free;
+	PMEM_AIO_PARAM* params;
+};
 
+//dberr_t
+//pm_fil_io_batch(
+//		const IORequest&	type,
+//		void*				pop_in,
+//		void*				pmem_buf_in,
+//		void*				plist_in);
+//
+//void
+//pm_buf_flush_spaces_in_list(
+//		void* pop_in,
+//	   	void* buf_in,
+//	   	void* flush_list_in);
 
 
 
@@ -602,34 +721,27 @@ pm_buf_flusher_close(PMEM_BUF*	buf);
 
 #if defined(UNIV_PMEMOBJ_BUF_STAT)
 void
-	pm_buf_bucket_stat_init(PMEM_BUF* pbuf);
+	pm_buf_bucket_stat_init(PMEM_WRAPPER* pmw);
 
 void
-	pm_buf_stat_print_all(PMEM_BUF* pbuf);
+	pm_buf_stat_print_all(PMEM_WRAPPER* pmw);
 #endif
 //DEBUG functions
 
-void pm_buf_print_lists_info(PMEM_BUF* buf);
+void pm_buf_print_lists_info(PMEM_WRAPPER* pmw);
 
 
 //version 1: implemented in pmem0buf, directly handle without using thread slot
 void
 pm_handle_finished_block(
-		PMEMobjpool*		pop,
-	   	PMEM_BUF*			buf,
+	   	PMEM_WRAPPER*			pmw,
 	   	PMEM_BUF_BLOCK* pblock);
 
-void
-pm_handle_finished_block_no_free_pool(
-		PMEMobjpool*		pop,
-	   	PMEM_BUF* buf,
-	   	PMEM_BUF_BLOCK* pblock);
 
 //Implemented in buf0flu.cc using with pm_buf_write_with_flsuher
 void
 pm_handle_finished_block_with_flusher(
-		PMEMobjpool*		pop,
-	   	PMEM_BUF*			buf,
+	   	PMEM_WRAPPER*			pmw,
 	   	PMEM_BUF_BLOCK*		pblock);
 
 //version 2 is implemented in buf0flu.cc that handle threads slot
@@ -681,7 +793,7 @@ pm_buf_flush_list_cleaner_disabled_loop(void);
 
 uint64_t 
 hash_f1(
-		uint64_t&			hashed,
+		uint64_t		hashed,
 		uint32_t		space_no,
 	   	uint32_t		page_no,
 	   	uint64_t		n,
@@ -698,6 +810,10 @@ hash_f1(
 #define PMEM_HASH_KEY(hashed, key, n) do {\
 	hashed = key ^ PMEM_HASH_MASK;\
 	hashed = hashed % n;\
+}while(0)
+
+#define FOLD(out, a, b) do {\
+	out = (a << 20) + a + b;\
 }while(0)
 
 #if defined (UNIV_PMEMOBJ_BUF_PARTITION)

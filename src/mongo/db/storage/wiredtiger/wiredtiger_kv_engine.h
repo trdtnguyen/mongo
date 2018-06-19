@@ -47,6 +47,7 @@
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/elapsed_tracker.h"
 
+
 namespace mongo {
 
 class ClockSource;
@@ -54,6 +55,7 @@ class JournalListener;
 class WiredTigerRecordStore;
 class WiredTigerSessionCache;
 class WiredTigerSizeStorer;
+
 
 struct WiredTigerFileVersion {
     enum class StartupVersion { IS_34, IS_36, IS_40 };

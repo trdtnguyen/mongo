@@ -42,15 +42,18 @@
 #endif
 
 #if defined (UNIV_PMEMOBJ_LOG) || defined (UNIV_PMEMOBJ_BUF) || defined (UNIV_PMEMOBJ_WAL)
-#include <libpmem.h>
-#include <libpmemobj.h>
+//#include <libpmem.h>
+//#include <libpmemobj.h>
 //#include "mongo/db/pmem/my_pmemobj.h"
-#include "third_party/wiredtiger/src/pmem/my_pmemobj.h"
+//#include "third_party/wiredtiger/src/pmem/my_pmemobj.h"
+//#include <third_party/wiredtiger/src/include/my_pmemobj.h>
 
-char  PMEM_FILE_PATH [PMEM_MAX_FILE_NAME_LENGTH];
-extern PMEM_WRAPPER* gb_pmw;
+//char  PMEM_FILE_PATH [PMEM_MAX_FILE_NAME_LENGTH];
+//extern PMEM_WRAPPER* gb_pmw;
+//PMEM_WRAPPER* gb_pmw;
 
 #endif
+
 
 #include <memory>
 
@@ -552,15 +555,23 @@ WiredTigerKVEngine::WiredTigerKVEngine(const std::string& canonicalName,
         ss << ",log=(enabled=false),";
     }
 
-#if defined(UNIV_PMEMOBJ_LOG) || defined(UNIV_PMEMOBJ_DBW) || defined (UNIV_PMEMOBJ_BUF) || defined (UNIV_PMEMOBJ_WAL) 
 #if defined (UNIV_PMEMOBJ_BUF)
 	printf("\n======= Hello PMEMOBJ Buffer from VLDB lab ========\n");
-	//size_t pool_size = srv_pmem_pool_size * 1024 * 1024;
-	size_t pool_size = 1 * 1024 * 1024;
-	gb_pmw = pm_wrapper_create(PMEM_FILE_PATH, pool_size);
+	//gb_pmw->PMEM_N_BUCKETS = wiredTigerGlobalOptions.pmem_buf_n_buckets;
+	//gb_pmw->PMEM_BUCKET_SIZE = wiredTigerGlobalOptions.pmem_buf_bucket_size;
+	//gb_pmw->PMEM_BUF_FLUSH_PCT = wiredTigerGlobalOptions.pmem_buf_flush_pct;
+
+	//gb_pmw->PMEM_N_FLUSH_THREADS= wiredTigerGlobalOptions.pmem_n_flush_threads;
+
+	//size_t pool_size = wiredTigerGlobalOptions.pmem_pool_size * 1024 * 1024;
+	//gb_pmw = pm_wrapper_create(PMEM_FILE_PATH, pool_size);
+
+	//size_t buf_size = wiredTigerGlobalOptions.pmem_buf_size * 1024 * 1024;
+	//gb_pmw->PMEM_BUF_SIZE = buf_size;
+
+	//pm_wrapper_buf_alloc_or_open(gb_pmw, buf_size, 16*1024);
 
 #endif //UNIV_PMEMOJB_BUF
-#endif
     string config = ss.str();
     log() << "wiredtiger_open config: " << config;
     openWiredTiger(path, _eventHandler.getWtEventHandler(), config, &_conn, &_fileVersion);
@@ -607,6 +618,10 @@ WiredTigerKVEngine::WiredTigerKVEngine(const std::string& canonicalName,
 
 
 WiredTigerKVEngine::~WiredTigerKVEngine() {
+//tdnguyen
+#if defined (UNIV_PMEMOBJ_BUF)
+	//pm_wrapper_free(gb_pmw);
+#endif //UNIV_PMEMOJB_BUF
     if (_conn) {
         cleanShutdown();
     }

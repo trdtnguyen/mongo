@@ -398,6 +398,12 @@ union __wt_rand_state;
 #include "os_fstream.i"
 #include "packing.i"
 #include "serial.i"
+//tdn
+#if defined (UNIV_PMEMOBJ_BUF)
+//#include <libpmemobj.h>
+//#include "my_pmem_common.h"
+#include "my_pmemobj.h"
+#endif
 
 #if defined(__cplusplus)
 }

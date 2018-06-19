@@ -63,6 +63,23 @@ public:
     bool useIndexPrefixCompression;
     std::string collectionConfig;
     std::string indexConfig;
+//#if defined(UNIV_PMEMOBJ_BUF)
+	std::string pmem_home_dir;
+	size_t pmem_pool_size;
+	size_t pmem_buf_bucket_size;
+	size_t pmem_buf_size;
+	size_t pmem_buf_n_buckets;
+	double pmem_buf_flush_pct;
+
+	size_t aio_n_slots_per_seg;
+
+//#endif
+	size_t pmem_n_flush_threads;
+	size_t pmem_flush_threshold;
+#if defined (UNIV_PMEMOBJ_BUF_PARTITION)
+	size_t pmem_n_space_bits;
+	size_t pmem_page_per_bucket_bits;
+#endif
 };
 
 extern WiredTigerGlobalOptions wiredTigerGlobalOptions;

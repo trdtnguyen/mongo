@@ -5,31 +5,36 @@
  * Copyright (c) 2017 VLDB Lab - Sungkyunkwan University
  * */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/types.h>                                                                      
-#include <sys/time.h> //for struct timeval, gettimeofday()
-#include <string.h>
-#include <stdint.h> //for uint64_t
-#include <math.h> //for log()
-#include <assert.h>
-#include <wchar.h>
-#include <unistd.h> //for access()
+//#include <stdio.h>
+//#include <stdlib.h>
+//#include <sys/types.h>                                                                      
+//#include <sys/time.h> //for struct timeval, gettimeofday()
+//#include <string.h>
+//#include <stdint.h> //for uint64_t
+//#include <math.h> //for log()
+//#include <assert.h>
+//#include <wchar.h>
+//#include <unistd.h> //for access()
 
 
-#include "my_pmem_common.h"
-#include "my_pmemobj.h"
-//#include "pmem0buf.h"
+//#include "my_pmem_common.h"
+//#include "my_pmemobj.h"
+#include "wt_internal.h"
+#include <libpmemobj.h>
 
 //global variable
-PMEM_WRAPPER* gb_pmw = NULL;
+//PMEM_WRAPPER* gb_pmw = NULL;
 
 /*
  *@param[in] path	name of file created in pmem
- @parma[in] pool_size	size of pmemobjpool in Byte
+ @parma[in] pool_size	size of pmemobjpool in MB
  * */
 
-PMEM_WRAPPER* pm_wrapper_create(const char* path, const size_t pool_size){
+PMEM_WRAPPER* 
+pm_wrapper_create(
+		WT_SESSION_IMPL* session,
+		const char*		path,
+		const size_t	pool_size){
 	PMEM_WRAPPER* pmw;
 	PMEMobjpool* pop = NULL;
 	int check_pmem;
@@ -47,6 +52,9 @@ PMEM_WRAPPER* pm_wrapper_create(const char* path, const size_t pool_size){
 	pmw =  (PMEM_WRAPPER*) malloc(sizeof(PMEM_WRAPPER));
 	if (!pmw)
 		goto err;
+	//Get the reference to the session in WiredTiger
+	pmw->session = session;
+
 	pmw->is_new = true;
 
 	//Force use pmem
@@ -58,7 +66,7 @@ PMEM_WRAPPER* pm_wrapper_create(const char* path, const size_t pool_size){
 
 	if (file_exists(path) != 0) {
 		if ((pop = pmemobj_create(path, POBJ_LAYOUT_NAME(my_pmemobj),
-						pool_size, S_IWRITE | S_IREAD)) == NULL) {
+						pool_size*1024*1024, S_IWRITE | S_IREAD)) == NULL) {
 			printf("[PMEMOBJ_ERROR] failed to create pool\n");
 			goto err;
 		}
@@ -94,14 +102,14 @@ PMEM_WRAPPER* pm_wrapper_create(const char* path, const size_t pool_size){
 #endif 
 	/*If we have persistent data structures, get them*/
 	if(!pmw->is_new) {
-		pmw->plogbuf = pm_pop_get_logbuf(pop);
-		if(!pmw->plogbuf){
-			printf("[PMEMOBJ_INFO] the pmem log buffer is empty. The server've shutdown normally\n");
-		}
-		pmw->pdbw = pm_pop_get_dbw(pop);
-		if(!pmw->pdbw){
-			printf("[PMEMOBJ_INFO] the pmem double write buffer is empty. The database is new or the previous double write buffer is in disk instead of PMEM\n");
-		}
+		//pmw->plogbuf = pm_pop_get_logbuf(pop);
+		//if(!pmw->plogbuf){
+		//	printf("[PMEMOBJ_INFO] the pmem log buffer is empty. The server've shutdown normally\n");
+		//}
+		//pmw->pdbw = pm_pop_get_dbw(pop);
+		//if(!pmw->pdbw){
+		//	printf("[PMEMOBJ_INFO] the pmem double write buffer is empty. The database is new or the previous double write buffer is in disk instead of PMEM\n");
+		//}
 
 #if defined (UNIV_PMEMOBJ_BUF)
 		pmw->pbuf = pm_pop_get_buf(pop);
@@ -132,7 +140,7 @@ void pm_wrapper_free(PMEM_WRAPPER* pmw){
 
 	if(pmw->pop)
 		pm_pop_free(pmw->pop);
-	pmw->plogbuf = NULL;
+	//pmw->plogbuf = NULL;
 	pmw->pop = NULL;
 
 	printf("PMEMOBJ_INFO: free PMEM_WRAPPER from heap allocated\n");
@@ -165,9 +173,7 @@ PMEMoid pm_pop_alloc_bytes(PMEMobjpool* pop, size_t size){
 }
 void pm_pop_free(PMEMobjpool* pop){
 	TOID(PMEM_LOG_BUF) logbuf;
-	TOID(PMEM_DBW) dbw;
 	TOID(char) data1;
-	TOID(char) data2;
 	
 	/* Free log buffer*/
 	POBJ_FOREACH_TYPE(pop, logbuf) {
@@ -181,23 +187,6 @@ void pm_pop_free(PMEMobjpool* pop){
 		POBJ_FREE(&logbuf);	
 	}
 	printf("PMEMOBJ_INFO: free PMEMobjpool from pmem\n");
-
-	/*Free DBW*/
-	/*We kept the double write buffer in PMEM when the server shutdown
-	 *It use for recovery tone pages when the server start up
-	 * */
-	/*
-	POBJ_FOREACH_TYPE(pop, dbw) {
-		TOID_ASSIGN(data2, D_RW(dbw)->data);
-		POBJ_FREE(&data2);	
-
-		D_RW(dbw)->block1 = 0;
-		D_RW(dbw)->block2 = 0;
-
-		POBJ_FREE(&logbuf);	
-	}
-	*/
-
 	pmemobj_close(pop);
 }
 

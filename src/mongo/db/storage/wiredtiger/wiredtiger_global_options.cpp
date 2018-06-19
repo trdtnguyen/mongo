@@ -43,6 +43,65 @@ WiredTigerGlobalOptions wiredTigerGlobalOptions;
 Status WiredTigerGlobalOptions::add(moe::OptionSection* options) {
     moe::OptionSection wiredTigerOptions("WiredTiger options");
 
+#if defined(UNIV_PMEMOBJ_BUF)
+	//PMEM_BUF options
+    wiredTigerOptions.addOptionChaining("storage.wiredTiger.engineConfig.pmem_home_dir",
+                                        "pmem_home_dir",
+                                        moe::String,
+                                        "location of the pmem; "
+                                        "default is /mnt/pmem1 ");
+    wiredTigerOptions.addOptionChaining("storage.wiredTiger.engineConfig.pmem_pool_size",
+                                        "pmem_pool_size",
+                                        moe::Long,
+                                        "pmemobj pool size in MB 1MB ~ 16GB; "
+                                        "default is 8096 MB").validRange(1,16384); 
+	wiredTigerOptions.addOptionChaining("storage.wiredTiger.engineConfig.pmem_buf_bucket_size", "pmem_buf_bucket_size", moe::Long, "number of data pages in a bucket; "
+                                        "default is 256 pages").validRange(1,65536);
+    wiredTigerOptions.addOptionChaining("storage.wiredTiger.engineConfig.pmem_buf_size",
+                                        "pmem_buf_size",
+                                        moe::Long,
+                                        "pm buffer size in MB; " "default is 4096 MB");
+    wiredTigerOptions.addOptionChaining("storage.wiredTiger.engineConfig.pmem_buf_n_buckets",
+                                        "pmem_buf_n_buckets",
+                                        moe::Long,
+                                        "number of buckets in the pmem buf; "
+                                        "default is 128");
+    wiredTigerOptions.addOptionChaining("storage.wiredTiger.engineConfig.pmem_buf_flush_pct",
+                                        "pmem_buf_flush_pct",
+                                        moe::Double,
+                                        "percentage threshold to flush the pmem buf to SSD; "
+                                        "default is 0.9");
+    wiredTigerOptions.addOptionChaining("storage.wiredTiger.engineConfig.aio_n_slots_per_seg",
+                                        "aio_n_slots_per_seg",
+                                        moe::Long,
+                                        "Max number of slots per segment in AIO, from 1 to 65536; "
+                                        "default is 256").validRange(1,65536);
+
+    wiredTigerOptions.addOptionChaining("storage.wiredTiger.engineConfig.pmem_n_flush_threads",
+                                        "pmem_n_flush_threads",
+                                        moe::Long,
+                                        "number of flush threads in the FLUSHER; "
+                                        "default is 8").validRange(1,64);
+    wiredTigerOptions.addOptionChaining("storage.wiredTiger.engineConfig.pmem_flush_threshold",
+                                        "pmem_flush_threshold",
+                                        moe::Long,
+                                        "the maximum delay flush calls to weakup the flushing threads in FLUSHER; "
+                                        "default is number of flush threads - 2").validRange(1,62);
+#endif //UNIV_PMEMOBJ_BUF
+
+#if defined (UNIV_PMEMOBJ_BUF_PARTITION)
+    wiredTigerOptions.addOptionChaining("storage.wiredTiger.engineConfig.pmem_n_space_bits",
+                                        "pmem_n_space_bits",
+                                        moe::Long,
+                                        "Number of bits present a page_no in partition algorithm, from 1 to 32 (space_no is 4-bytes number), default is 5; "
+                                        "default is 5").validRange(1,32);
+    wiredTigerOptions.addOptionChaining("storage.wiredTiger.engineConfig.pmem_page_per_bucket_bits",
+                                        "pmem_page_per_bucket_bits",
+                                        moe::Long,
+                                        "Number of bits present the maxmum number of pages per space in a bucket in partition algorithm, from 1 to log2(srv_pmem_buf_bucket_size); "
+                                        "default is 10").validRange(1,32);
+#endif //UNIV_PMEMOBJ_BUF_PARTITION
+
     // WiredTiger storage engine options
     wiredTigerOptions.addOptionChaining("storage.wiredTiger.engineConfig.cacheSizeGB",
                                         "wiredTigerCacheSizeGB",
@@ -114,6 +173,67 @@ Status WiredTigerGlobalOptions::add(moe::OptionSection* options) {
 
 Status WiredTigerGlobalOptions::store(const moe::Environment& params,
                                       const std::vector<std::string>& args) {
+
+#if defined(UNIV_PMEMOBJ_BUF)
+    if (params.count("storage.wiredTiger.engineConfig.pmem_home_dir")) {
+        wiredTigerGlobalOptions.pmem_home_dir =
+            params["storage.wiredTiger.engineConfig.pmem_home_dir"].as<std::string>();
+        log() << "PMEM home dir: " << wiredTigerGlobalOptions.pmem_home_dir;
+    }
+    if (params.count("storage.wiredTiger.engineConfig.pmem_pool_size")) {
+        wiredTigerGlobalOptions.pmem_pool_size =
+            params["storage.wiredTiger.engineConfig.pmem_pool_size"].as<long>();
+        log() << "pmem_pool_size: " << wiredTigerGlobalOptions.pmem_pool_size;
+    }
+    if (params.count("storage.wiredTiger.engineConfig.pmem_buf_bucket_size")) {
+        wiredTigerGlobalOptions.pmem_buf_bucket_size =
+            params["storage.wiredTiger.engineConfig.pmem_buf_bucket_size"].as<long>();
+        log() << "pmem_buf_bucket_size: " << wiredTigerGlobalOptions.pmem_buf_bucket_size;
+    }
+    if (params.count("storage.wiredTiger.engineConfig.pmem_buf_size")) {
+        wiredTigerGlobalOptions.pmem_buf_size =
+            params["storage.wiredTiger.engineConfig.pmem_buf_size"].as<long>();
+        log() << "pmem_buf_size: " << wiredTigerGlobalOptions.pmem_buf_size;
+    }
+    if (params.count("storage.wiredTiger.engineConfig.pmem_buf_n_buckets")) {
+        wiredTigerGlobalOptions.pmem_buf_n_buckets =
+            params["storage.wiredTiger.engineConfig.pmem_buf_n_buckets"].as<long>();
+        log() << "pmem_buf_n_buckets: " << wiredTigerGlobalOptions.pmem_buf_n_buckets;
+    }
+    if (params.count("storage.wiredTiger.engineConfig.pmem_buf_flush_pct")) {
+        wiredTigerGlobalOptions.pmem_buf_flush_pct =
+            params["storage.wiredTiger.engineConfig.pmem_buf_flush_pct"].as<double>();
+        log() << "pmem_buf_flush_pct: " << wiredTigerGlobalOptions.pmem_buf_flush_pct;
+    }
+    if (params.count("storage.wiredTiger.engineConfig.aio_n_slots_per_seg")) {
+        wiredTigerGlobalOptions.aio_n_slots_per_seg =
+            params["storage.wiredTiger.engineConfig.aio_n_slots_per_seg"].as<long>();
+        log() << "aio_n_slots_per_seg: " << wiredTigerGlobalOptions.aio_n_slots_per_seg;
+    }
+    if (params.count("storage.wiredTiger.engineConfig.pmem_n_flush_threads")) {
+        wiredTigerGlobalOptions.pmem_n_flush_threads =
+            params["storage.wiredTiger.engineConfig.pmem_n_flush_threads"].as<long>();
+        log() << "pmem_n_flush_threads: " << wiredTigerGlobalOptions.pmem_n_flush_threads;
+    }
+    if (params.count("storage.wiredTiger.engineConfig.pmem_flush_threshold")) {
+        wiredTigerGlobalOptions.pmem_flush_threshold =
+            params["storage.wiredTiger.engineConfig.pmem_flush_threshold"].as<long>();
+        log() << "pmem_flush_threshold: " << wiredTigerGlobalOptions.pmem_flush_threshold;
+    }
+#endif
+#if defined (UNIV_PMEMOBJ_BUF_PARTITION)
+    if (params.count("storage.wiredTiger.engineConfig.pmem_n_space_bits")) {
+        wiredTigerGlobalOptions.pmem_n_space_bits =
+            params["storage.wiredTiger.engineConfig.pmem_n_space_bits"].as<long>();
+        log() << "pmem_n_space_bits: " << wiredTigerGlobalOptions.pmem_n_space_bits;
+    }
+    if (params.count("storage.wiredTiger.engineConfig.pmem_page_per_bucket_bits")) {
+        wiredTigerGlobalOptions.pmem_page_per_bucket_bits =
+            params["storage.wiredTiger.engineConfig.pmem_page_per_bucket_bits"].as<long>();
+        log() << "pmem_page_per_bucket_bits: " << wiredTigerGlobalOptions.pmem_page_per_bucket_bits;
+    }
+#endif
+
     // WiredTiger storage engine options
     if (params.count("storage.wiredTiger.engineConfig.cacheSizeGB")) {
         wiredTigerGlobalOptions.cacheSizeGB =

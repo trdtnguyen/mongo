@@ -28,11 +28,13 @@
 
 //tdnguyen modify
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
-#if defined (UNIV_PMEMOBJ_LOG) || defined (UNIV_PMEMOBJ_DBW) || defined (UNIV_PMEMOBJ_BUF) || defined(UNIV_PMEMOBJ_WAL)
-#include <libpmem.h>
-#include <libpmemobj.h>
-#include <third_party/wiredtiger/src/include/my_pmemobj.h>
-#endif //if defined (UNIV_PMEMOBJ_LOG) || defined (UNIV_PMEMOBJ_DBW) || defined (UNIV_PMEMOBJ_BUF) || defined(UNIV_PMEMOBJ_WAL)
+//#if defined (UNIV_PMEMOBJ_LOG) || defined (UNIV_PMEMOBJ_DBW) || defined (UNIV_PMEMOBJ_BUF) || defined(UNIV_PMEMOBJ_WAL)
+//#include <libpmem.h>
+//#include <libpmemobj.h>
+//#include <third_party/wiredtiger/src/include/my_pmemobj.h>
+//#include "third_party/wiredtiger/src/pmem/my_pmemobj.h"
+//#include "mongo/db/storage/wiredtiger/my_pmemobj.h"
+//#endif //if defined (UNIV_PMEMOBJ_LOG) || defined (UNIV_PMEMOBJ_DBW) || defined (UNIV_PMEMOBJ_BUF) || defined(UNIV_PMEMOBJ_WAL)
 
 #include "mongo/platform/basic.h"
 
@@ -191,6 +193,9 @@
 #include <sys/file.h>
 #endif
 
+//#if defined (UNIV_PMEMOBJ_LOG) || defined (UNIV_PMEMOBJ_BUF) || defined (UNIV_PMEMOBJ_WAL)
+//PMEM_WRAPPER* gb_pmw;
+//#endif
 namespace mongo {
 
 using logger::LogComponent;

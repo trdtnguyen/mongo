@@ -66,19 +66,6 @@ enum pm_list_cleaner_state {
 	LIST_CLEANER_STATE_FINISHED
 };
 
-//struct __pmem_aio_param;
-//typedef struct __pmem_aio_param PMEM_AIO_PARAM;
-//
-//struct __pmem_aio_param {
-//	const char* name;
-//	void*		file;	
-//	void*		buf;
-//	uint64_t	offset;
-//	uint64_t		n;	
-//	void*		m1;
-//	void*		m2;
-//};
-
 static inline int file_exists(char const *file);
 
 /*

@@ -8,6 +8,10 @@
 
 #include "wt_internal.h"
 
+#if defined (UNIV_PMEMOBJ_BUF)
+PMEM_WRAPPER* gb_pmw;
+#endif
+
 /*
  * ext_collate --
  *	Call the collation function (external API version).
@@ -2663,6 +2667,18 @@ wiredtiger_open(const char *home, WT_EVENT_HANDLER *event_handler,
 	WT_ERR(__wt_connection_open(conn, cfg));
 	session = conn->default_session;
 
+//tdn
+#if defined (UNIV_PMEMOBJ_BUF)
+	//(1) Get config variables
+	//TODO:
+	//(2) Create PM
+	size_t pool_size = 16384;
+	size_t buf_size = 256;
+	gb_pmw = pm_wrapper_create(session, "/mnt/pmem1", pool_size);
+	//(3) init PM
+	pm_wrapper_buf_alloc_or_open(gb_pmw, buf_size, 16*1024);
+
+#endif
 	/*
 	 * Load the extensions after initialization completes; extensions expect
 	 * everything else to be in place, and the extensions call back into the

@@ -1,6 +1,10 @@
 # filelist --
 #	List of source files for WiredTiger library.
 
+#tdn add
+src/pmem/pmem0buf.c
+src/pmem/pmem0wrapper.c
+#end tdn add
 src/async/async_api.c
 src/async/async_op.c
 src/async/async_worker.c
