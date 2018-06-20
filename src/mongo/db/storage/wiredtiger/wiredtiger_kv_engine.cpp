@@ -491,6 +491,21 @@ WiredTigerKVEngine::WiredTigerKVEngine(const std::string& canonicalName,
 
 
     ss << "create,";
+#if defined (UNIV_PMEMOBJ_BUF)
+	//ss << "pmem=(pmem_home_dir=" << wiredTigerGlobalOptions.pmem_home_dir << ",";
+	ss << "pmem=(pmem_pool_size=" << wiredTigerGlobalOptions.pmem_pool_size;
+	ss << ",pmem_buf_size=" << wiredTigerGlobalOptions.pmem_buf_size ;
+	ss << ",pmem_buf_n_buckets=" << wiredTigerGlobalOptions.pmem_buf_n_buckets;
+	ss << ",pmem_buf_bucket_size=" << wiredTigerGlobalOptions.pmem_buf_bucket_size;
+	ss << ",pmem_buf_flush_pct=" << wiredTigerGlobalOptions.pmem_buf_flush_pct;
+	ss << ",pmem_n_flush_threads=" << wiredTigerGlobalOptions.pmem_n_flush_threads;
+	ss << ",pmem_flush_threshold=" << wiredTigerGlobalOptions.pmem_flush_threshold;
+#if defined(UNIV_PMEMOBJ_BUF_PARTITION)
+	ss << ",pmem_n_space_bits=" << wiredTigerGlobalOptions.pmem_n_space_bits;
+	ss << ",pmem_page_per_bucket_bits=" << wiredTigerGlobalOptions.pmem_page_per_bucket_bits;
+#endif //defined(UNIV_PMEMOBJ_BUF_PARTITION)
+	ss << "),";
+#endif 
     ss << "cache_size=" << cacheSizeMB << "M,";
     ss << "session_max=20000,";
     ss << "eviction=(threads_min=4,threads_max=4),";
@@ -555,8 +570,11 @@ WiredTigerKVEngine::WiredTigerKVEngine(const std::string& canonicalName,
         ss << ",log=(enabled=false),";
     }
 
+    string config = ss.str();
+	
 #if defined (UNIV_PMEMOBJ_BUF)
 	printf("\n======= Hello PMEMOBJ Buffer from VLDB lab ========\n");
+
 	//gb_pmw->PMEM_N_BUCKETS = wiredTigerGlobalOptions.pmem_buf_n_buckets;
 	//gb_pmw->PMEM_BUCKET_SIZE = wiredTigerGlobalOptions.pmem_buf_bucket_size;
 	//gb_pmw->PMEM_BUF_FLUSH_PCT = wiredTigerGlobalOptions.pmem_buf_flush_pct;
@@ -572,7 +590,6 @@ WiredTigerKVEngine::WiredTigerKVEngine(const std::string& canonicalName,
 	//pm_wrapper_buf_alloc_or_open(gb_pmw, buf_size, 16*1024);
 
 #endif //UNIV_PMEMOJB_BUF
-    string config = ss.str();
     log() << "wiredtiger_open config: " << config;
     openWiredTiger(path, _eventHandler.getWtEventHandler(), config, &_conn, &_fileVersion);
     _eventHandler.setStartupSuccessful();

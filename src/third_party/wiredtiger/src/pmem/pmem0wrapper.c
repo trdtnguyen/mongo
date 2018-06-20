@@ -160,6 +160,10 @@ PMEMoid pm_pop_alloc_bytes(PMEMobjpool* pop, size_t size){
 		fprintf(stderr, "POBJ_ALLOC\n");
 		return OID_NULL;
 	}
+	if (OID_IS_NULL(array.oid)){
+		fprintf(stderr, "POBJ_ALLOC\n");
+		return OID_NULL;
+	}
 
 	pmemobj_persist(pop, D_RW(array), size * sizeof(*D_RW(array)));
 	printf("PMEMOBJ_INFO: allocate PMEMobjpool from pmem with size %zu MB\n", (size/(1024*1024)));

@@ -111,13 +111,13 @@ pm_wrapper_buf_alloc_or_open(
 //	PMEM_FLUSHER_WAKE_THRESHOLD = srv_pmem_flush_threshold;
 //#endif
 
-#if defined (UNIV_PMEMOBJ_BUF_PARTITION)
-	PMEM_N_BUCKET_BITS = log2(srv_pmem_buf_n_buckets);
-	PMEM_N_SPACE_BITS = srv_pmem_n_space_bits;
-	PMEM_PAGE_PER_BUCKET_BITS = srv_pmem_page_per_bucket_bits;
-	printf("======> >> > >PMEM PARTITION: n_bucket_bits %zu n_space_bits %zu page_per_bucket_bits %zu\n",
-			PMEM_N_BUCKET_BITS, PMEM_N_SPACE_BITS, PMEM_PAGE_PER_BUCKET_BITS);
-#endif 
+//#if defined (UNIV_PMEMOBJ_BUF_PARTITION)
+//	PMEM_N_BUCKET_BITS = log2(srv_pmem_buf_n_buckets);
+//	PMEM_N_SPACE_BITS = srv_pmem_n_space_bits;
+//	PMEM_PAGE_PER_BUCKET_BITS = srv_pmem_page_per_bucket_bits;
+//	printf("======> >> > >PMEM PARTITION: n_bucket_bits %zu n_space_bits %zu page_per_bucket_bits %zu\n",
+//			PMEM_N_BUCKET_BITS, PMEM_N_SPACE_BITS, PMEM_PAGE_PER_BUCKET_BITS);
+//#endif 
 	/////////////////////////////////////////////////
 	// PART 1: NVM structures
 	// ///////////////////////////////////////////////
@@ -331,6 +331,9 @@ pm_pop_buf_alloc(
 		//assert(0);
 		return NULL;
 	}
+	
+	//This assignment is necessary if the first arg in pm_buf_lists_init() is pmw	
+	pmw->pbuf = pbuf;
 
 	pm_buf_lists_init(pmw, align_size, page_size);
 	pmemobj_persist(pop, pbuf, sizeof(*pbuf));
@@ -790,7 +793,7 @@ retry:
 
 	pfree_block->id = page_id;
 	
-	assert(pfree_block->size.equals_to(size));
+	assert(pfree_block->size == size);
 	assert(pfree_block->state == PMEM_FREE_BLOCK);
 	pfree_block->state = PMEM_IN_USED_BLOCK;
 
@@ -1176,7 +1179,7 @@ retry:
 
 	pfree_block->id = page_id;
 	
-	assert(pfree_block->size.equals_to(size));
+	assert(pfree_block->size == size);
 	assert(pfree_block->state == PMEM_FREE_BLOCK);
 	pfree_block->state = PMEM_IN_USED_BLOCK;
 
@@ -1355,7 +1358,7 @@ retry:
 
 	pfree_block->id = page_id;
 	
-	assert(pfree_block->size.equals_to(size));
+	assert(pfree_block->size == size);
 	assert(pfree_block->state == PMEM_FREE_BLOCK);
 	pfree_block->state = PMEM_IN_USED_BLOCK;
 
@@ -2202,7 +2205,7 @@ pm_buf_resume_flushing(
 		phashlist = D_RW(cur_list);
 		if (phashlist->cur_pages >= phashlist->max_pages * pmw->PMEM_BUF_FLUSH_PCT) {
 			assert(phashlist->is_flush);
-			assert(phashlist->hashed_id == i);
+			assert((uint64_t) phashlist->hashed_id == i);
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
 			printf("\ncase 1 PMEM_RECOVERY ==> resume flushing for hashed_id %zu list_id %zu\n", i, phashlist->list_id);
 #endif
@@ -2216,7 +2219,7 @@ pm_buf_resume_flushing(
 			if (plist->cur_pages >= plist->max_pages * pmw->PMEM_BUF_FLUSH_PCT) {
 				//for the list in flusher, we only assign the flusher thread, no handle free list replace
 				assert(plist->is_flush);
-				assert(plist->hashed_id == i);
+				assert((uint64_t)plist->hashed_id == i);
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
 				printf("\n\t\t case 2 PMEM_RECOVERY ==> resume flushing for linked list %zu of hashlist %zu hashed_id %zu\n", plist->list_id, phashlist->list_id, i);
 #endif

@@ -2251,6 +2251,33 @@ struct __wt_connection {
 	 * relative to the database home (see @ref absolute_path for more
 	 * information)., a string; default \c ".".}
 	 * @config{ ),,}
+	 * @config{pmem = (, Additional pmem options., a set of related
+	 * configuration options defined below.}
+	 * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_buf_bucket_size, size of the
+	 * buckets in number of pages., an integer between 1 and 65536; default
+	 * \c 256.}
+	 * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_buf_flush_pct, a., an
+	 * integer between 1 and 16384; default \c 1.}
+	 * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_buf_n_buckets, number of buckets
+	 * in the partition., an integer between 1 and 16384; default \c 128.}
+	 * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_buf_size, size of the pmem
+	 * buffer in MB., an integer between 1 and 16384; default \c 256.}
+	 * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_flush_threshold, If the pointer
+	 * assign in thread flusher larger than this threshold.  The batch flush
+	 * is trigger\, from 1 to 64\, default is number of flusher threads -
+	 * 2., an integer between 1 and 64; default \c 6.}
+	 * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_n_flush_threads, size of the
+	 * pmem buffer in MB., an integer between 1 and 16384; default \c 256.}
+	 * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_n_space_bits, Number of bits
+	 * present a page_no in partition algorithm\, from 1 to 32 (space_no is
+	 * 4-bytes number)., an integer between 1 and 32; default \c 5.}
+	 * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_page_per_bucket_bits, Number of
+	 * bits present the maxmum number of pages per space in a bucket in
+	 * partition algorithm\, from 1 to log2(pmem_buf_bucket_size)., an
+	 * integer between 1 and 32; default \c 10.}
+	 * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_pool_size, size of the pop in
+	 * pmem in MB., an integer between 1 and 16384; default \c 8096.}
+	 * @config{ ),,}
 	 * @config{shared_cache = (, shared cache configuration options.  A
 	 * database should configure either a cache_size or a shared_cache not
 	 * both.  Enabling a shared cache uses a session from the configured
@@ -2910,6 +2937,33 @@ struct __wt_connection {
  * operation tracking files are written.  The directory must already exist.  If
  * the value is not an absolute path\, the path is relative to the database home
  * (see @ref absolute_path for more information)., a string; default \c ".".}
+ * @config{ ),,}
+ * @config{pmem = (, Additional pmem options., a set of related configuration
+ * options defined below.}
+ * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_buf_bucket_size,
+ * size of the buckets in number of pages., an integer between 1 and 65536;
+ * default \c 256.}
+ * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_buf_flush_pct, a., an
+ * integer between 1 and 16384; default \c 1.}
+ * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_buf_n_buckets, number of buckets in the
+ * partition., an integer between 1 and 16384; default \c 128.}
+ * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_buf_size, size of the pmem buffer in
+ * MB., an integer between 1 and 16384; default \c 256.}
+ * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_flush_threshold, If the pointer assign
+ * in thread flusher larger than this threshold.  The batch flush is trigger\,
+ * from 1 to 64\, default is number of flusher threads - 2., an integer between
+ * 1 and 64; default \c 6.}
+ * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_n_flush_threads, size of the pmem buffer
+ * in MB., an integer between 1 and 16384; default \c 256.}
+ * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_n_space_bits, Number of bits present a
+ * page_no in partition algorithm\, from 1 to 32 (space_no is 4-bytes number).,
+ * an integer between 1 and 32; default \c 5.}
+ * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_page_per_bucket_bits, Number of bits
+ * present the maxmum number of pages per space in a bucket in partition
+ * algorithm\, from 1 to log2(pmem_buf_bucket_size)., an integer between 1 and
+ * 32; default \c 10.}
+ * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_pool_size, size of
+ * the pop in pmem in MB., an integer between 1 and 16384; default \c 8096.}
  * @config{ ),,}
  * @config{readonly, open connection in read-only mode.  The database must
  * exist.  All methods that may modify a database are disabled.  See @ref

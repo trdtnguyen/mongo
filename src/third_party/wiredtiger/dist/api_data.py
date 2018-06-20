@@ -398,6 +398,44 @@ table_meta = format_meta + table_only_config
 
 # Connection runtime config, shared by conn.reconfigure and wiredtiger_open
 connection_runtime_config = [
+#tdn added
+    Config('pmem', '', r'''
+        Additional pmem options''',
+        type='category', subconfig=[
+        Config('pmem_pool_size', '8096', r'''
+            size of the pop in pmem in MB''',
+            min='1', max='16384'),
+        Config('pmem_buf_size', '256', r'''
+            size of the pmem buffer in MB''',
+            min='1', max='16384'),
+        Config('pmem_buf_n_buckets', '128', r'''
+            number of buckets in the partition''',
+            min='1', max='16384'),
+        Config('pmem_buf_bucket_size', '256', r'''
+            size of the buckets in number of pages''',
+            min='1', max='65536'),
+        Config('pmem_buf_flush_pct', '1', r'''
+            a''',
+            min='1', max='16384'),
+        Config('pmem_n_flush_threads', '256', r'''
+            size of the pmem buffer in MB''',
+            min='1', max='16384'),
+        Config('pmem_flush_threshold', '6', r'''
+            If the pointer assign in thread flusher 
+            larger than this threshold. The batch flush is trigger,
+            from 1 to 64, default is number of flusher threads - 2''',
+            min='1', max='64'),
+        Config('pmem_n_space_bits', '5', r'''
+            Number of bits present a page_no in partition 
+            algorithm, from 1 to 32 (space_no is 4-bytes number)''',
+            min='1', max='32'),
+        Config('pmem_page_per_bucket_bits', '10', r'''
+            Number of bits present the maxmum number 
+            of pages per space in a bucket in partition 
+            algorithm, from 1 to log2(pmem_buf_bucket_size)''',
+            min='1', max='32'),
+        ]),
+#end tdn added
     Config('async', '', r'''
         asynchronous operations configuration options''',
         type='category', subconfig=[

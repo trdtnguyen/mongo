@@ -9,7 +9,9 @@
 #include "wt_internal.h"
 
 #if defined (UNIV_PMEMOBJ_BUF)
+#include <assert.h>
 PMEM_WRAPPER* gb_pmw;
+char  PMEM_FILE_PATH [PMEM_MAX_FILE_NAME_LENGTH];
 #endif
 
 /*
@@ -2403,7 +2405,6 @@ wiredtiger_open(const char *home, WT_EVENT_HANDLER *event_handler,
 	/* Check the application-specified configuration string. */
 	WT_ERR(__wt_config_check(session,
 	    WT_CONFIG_REF(session, wiredtiger_open), config, 0));
-
 	/*
 	 * Build the temporary, initial configuration stack, in the following
 	 * order (where later entries override earlier entries):
@@ -2671,12 +2672,96 @@ wiredtiger_open(const char *home, WT_EVENT_HANDLER *event_handler,
 #if defined (UNIV_PMEMOBJ_BUF)
 	//(1) Get config variables
 	//TODO:
-	//(2) Create PM
 	size_t pool_size = 16384;
 	size_t buf_size = 256;
-	gb_pmw = pm_wrapper_create(session, "/mnt/pmem1", pool_size);
+	//Get the catagory 
+	WT_ERR(__wt_config_gets(session, cfg, "pmem", &cval));
+	//Now get each subconfig
+	ret = __wt_config_subgets(session, &cval, "pmem_pool_size", &sval);
+	if (ret == 0) {
+		if (sval.val)
+			pool_size = sval.val;
+	} else
+		WT_ERR_NOTFOUND_OK(ret);
+
+
+
+	//(2)Create PMEMOBJ
+	sprintf(PMEM_FILE_PATH, "%s/%s","/mnt/pmem1", PMEMOBJ_FILE_NAME);
+	//create new pmemobj or open the existed one
+	gb_pmw = pm_wrapper_create(session, PMEM_FILE_PATH, pool_size);
+	assert(gb_pmw);
+	int check_pmem = pmemobj_check(PMEM_FILE_PATH, POBJ_LAYOUT_NAME(my_pmemobj));
+	if (check_pmem == -1) {
+		fprintf(stderr, "PMEM_ERROR: PMEM_FILE_PATH is %s, check_pmem = -1, detail: %s \n", PMEM_FILE_PATH, pmemobj_errormsg());
+	}    
+	else {
+		printf("PMEM_INO: PMEM CHECK IS OK!\n");
+	}
+
+	//Get remain config values
+	//Since pmem_buf_size is in MB, we need to convert to B
+	ret = __wt_config_subgets(session, &cval, "pmem_buf_size", &sval);
+	if (ret == 0) {
+		if (sval.val)
+			gb_pmw->PMEM_BUF_SIZE = buf_size = sval.val * 1024 * 1024;
+	} else
+		WT_ERR_NOTFOUND_OK(ret);
+	ret = __wt_config_subgets(session, &cval, "pmem_buf_n_buckets", &sval);
+	if (ret == 0) {
+		if (sval.val)
+			gb_pmw->PMEM_N_BUCKETS = sval.val;
+	} else
+		WT_ERR_NOTFOUND_OK(ret);
+
+	ret = __wt_config_subgets(session, &cval, "pmem_buf_bucket_size", &sval);
+	if (ret == 0) {
+		if (sval.val)
+			gb_pmw->PMEM_BUCKET_SIZE = sval.val;
+	} else
+		WT_ERR_NOTFOUND_OK(ret);
+	
+	ret = __wt_config_subgets(session, &cval, "pmem_buf_flush_pct", &sval);
+	if (ret == 0) {
+		if (sval.val)
+			gb_pmw->PMEM_BUF_FLUSH_PCT = sval.val;
+	} else
+		WT_ERR_NOTFOUND_OK(ret);
+
+	ret = __wt_config_subgets(session, &cval, "pmem_n_flush_threads", &sval);
+	if (ret == 0) {
+		if (sval.val)
+			gb_pmw->PMEM_N_FLUSH_THREADS = sval.val;
+	} else
+		WT_ERR_NOTFOUND_OK(ret);
+
+	ret = __wt_config_subgets(session, &cval, "pmem_flush_threshold", &sval);
+	if (ret == 0) {
+		if (sval.val)
+			gb_pmw->PMEM_FLUSHER_WAKE_THRESHOLD = sval.val;
+	} else
+		WT_ERR_NOTFOUND_OK(ret);
+#if defined(UNIV_PMEMOBJ_BUF_PARTITION)
+	//This value is computed from PMEM_N_BUCKETS
+	gb_pmw->PMEM_N_BUCKET_BITS = log2(gb_pmw->PMEM_N_BUCKETS);
+
+	ret = __wt_config_subgets(session, &cval, "pmem_n_space_bits", &sval);
+	if (ret == 0) {
+		if (sval.val)
+			gb_pmw->PMEM_N_SPACE_BITS = sval.val;
+	} else
+		WT_ERR_NOTFOUND_OK(ret);
+
+	ret = __wt_config_subgets(session, &cval, "pmem_page_per_bucket_bits", &sval);
+	if (ret == 0) {
+		if (sval.val)
+			gb_pmw->PMEM_PAGE_PER_BUCKET_BITS = sval.val;
+	} else
+		WT_ERR_NOTFOUND_OK(ret);
+#endif  //defined(UNIV_PMEMOBJ_BUF_PARTITION)
+
 	//(3) init PM
-	pm_wrapper_buf_alloc_or_open(gb_pmw, buf_size, 16*1024);
+	pm_wrapper_buf_alloc_or_open(gb_pmw, buf_size, 32*1024);
 
 #endif
 	/*

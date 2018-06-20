@@ -232,6 +232,12 @@ struct __pmem_wrapper {
 
 	uint64_t PMEM_N_FLUSH_THREADS;
 	uint64_t PMEM_FLUSHER_WAKE_THRESHOLD;
+#if defined (UNIV_PMEMOBJ_BUF_PARTITION)
+	uint64_t PMEM_N_BUCKET_BITS; //this value is computed from PMEM_N_BUCKETS
+	uint64_t PMEM_N_SPACE_BITS;
+	uint64_t PMEM_PAGE_PER_BUCKET_BITS;
+#endif //#if defined (UNIV_PMEMOBJ_BUF_PARTITION)
+
 	//WiredTiger integration
 	WT_SESSION_IMPL* session;
 };
