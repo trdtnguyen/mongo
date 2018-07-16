@@ -1,6 +1,5 @@
 /* 
  * Author; Trong-Dat Nguyen
- * MySQL REDO log with NVDIMM
  * Using libpmemobj
  * Copyright (c) 2017 VLDB Lab - Sungkyunkwan University
  * */
@@ -21,6 +20,8 @@
 //#include "my_pmemobj.h"
 #include "wt_internal.h"
 #include <libpmemobj.h>
+
+#if defined (UNIV_PMEMOBJ_BUF)
 
 //global variable
 //PMEM_WRAPPER* gb_pmw = NULL;
@@ -193,4 +194,4 @@ void pm_pop_free(PMEMobjpool* pop){
 	printf("PMEMOBJ_INFO: free PMEMobjpool from pmem\n");
 	pmemobj_close(pop);
 }
-
+#endif //if defined (UNIV_PMEMOBJ_BUF)

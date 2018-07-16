@@ -228,7 +228,10 @@ __wt_block_read_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 	WT_BLOCK_HEADER *blk, swap;
 	size_t bufsize;
 	uint32_t page_checksum;
-
+#if defined (UNIV_PMEMOBJ_BUF)
+	WT_CONNECTION_IMPL *conn;
+	conn = S2C(session);
+#endif //if defined (UNIV_PMEMOBJ_BUF)
 	__wt_verbose(session, WT_VERB_READ,
 	    "off %" PRIuMAX ", size %" PRIu32 ", checksum %" PRIu32,
 	    (uintmax_t)offset, size, checksum);
@@ -252,7 +255,15 @@ __wt_block_read_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 		bufsize = WT_MAX(size, buf->memsize + 10);
 	}
 	WT_RET(__wt_buf_init(session, buf, bufsize));
+#if defined(UNIV_PMEMOBJ_BUF)
+	const PMEM_BUF_BLOCK* pblock =
+		pm_buf_read(conn->pmw, block->fh->name, offset, size, buf->mem);
+	if (pblock == NULL){
+		WT_RET(__wt_read(session, block->fh, offset, size, buf->mem));
+	}
+#else
 	WT_RET(__wt_read(session, block->fh, offset, size, buf->mem));
+#endif //defined (UNIV_PMEMOBJ_BUF)
 	buf->size = size;
 
 	/*

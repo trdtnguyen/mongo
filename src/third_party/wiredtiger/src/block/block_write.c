@@ -241,7 +241,9 @@ __block_write_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 	*checksump = 0;			/* -Werror=maybe-uninitialized */
 
 	fh = block->fh;
-
+#if defined (UNIV_PMEMOBJ_BUF)
+	WT_CONNECTION_IMPL *conn = S2C(session);
+#endif 
 	/*
 	 * Clear the block header to ensure all of it is initialized, even the
 	 * unused fields.
@@ -335,6 +337,15 @@ __block_write_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 	WT_RET(ret);
 
 	/* Write the block. */
+#if defined (UNIV_PMEMOBJ_BUF)
+	//Capture this write in our PMEM_BUF
+	ret = pm_buf_write_with_flusher(conn->pmw, fh->name, offset, align_size, buf->mem);
+	if (ret != PMEM_SUCCESS){
+		printf("The pm_buf_write has error in __wt_write_off(), check again!\n");	
+		exit(0);
+	}
+#else
+	//The original
 	if ((ret =
 	    __wt_write(session, fh, offset, align_size, buf->mem)) != 0) {
 		if (!caller_locked)
@@ -346,6 +357,7 @@ __block_write_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 		WT_RET(ret);
 	}
 
+#endif //#if defined (UNIV_PMEMOBJ_BUF)
 	/*
 	 * Optionally schedule writes for dirty pages in the system buffer
 	 * cache, but only if the current session can wait.

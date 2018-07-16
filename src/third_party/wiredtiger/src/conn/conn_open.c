@@ -113,7 +113,9 @@ __wt_connection_close(WT_CONNECTION_IMPL *conn)
 
 	/* Shut down metadata tracking. */
 	WT_TRET(__wt_meta_track_destroy(session));
-
+#if defined (UNIV_PMEMOBJ_BUF)
+	pm_wrapper_buf_close((PMEM_WRAPPER*)conn->pmw);
+#endif
 	/*
 	 * Now that all data handles are closed, tell logging that a checkpoint
 	 * has completed then shut down the log manager (only after closing

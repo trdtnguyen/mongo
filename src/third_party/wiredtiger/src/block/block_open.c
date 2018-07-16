@@ -279,6 +279,10 @@ __wt_desc_write(WT_SESSION_IMPL *session, WT_FH *fh, uint32_t allocsize)
 	WT_BLOCK_DESC *desc;
 	WT_DECL_ITEM(buf);
 	WT_DECL_RET;
+#if defined (UNIV_PMEMOBJ_BUF)
+	WT_CONNECTION_IMPL *conn;
+	conn = S2C(session);
+#endif //#if defined (UNIV_PMEMOBJ_BUF)
 
 	/* If in-memory, we don't read or write the descriptor structure. */
 	if (F_ISSET(S2C(session), WT_CONN_IN_MEMORY))
@@ -303,8 +307,18 @@ __wt_desc_write(WT_SESSION_IMPL *session, WT_FH *fh, uint32_t allocsize)
 #ifdef WORDS_BIGENDIAN
 	desc->checksum = __wt_bswap32(desc->checksum);
 #endif
-	ret = __wt_write(session, fh, (wt_off_t)0, (size_t)allocsize, desc);
 
+#if defined (UNIV_PMEMOBJ_BUF)
+	//Capture the meta-data write in PMEM
+	ret = pm_buf_write_with_flusher(conn->pmw, fh->name, (off_t)0, (size_t)allocsize, (byte*)desc);
+	if (ret != PMEM_SUCCESS){
+		printf("The pm_buf_write has error in __wt_desc_write(), check again!\n");
+		printf("file name: %s offset 0 \n", fh->name);
+		exit(0);
+	}
+#else //original
+	ret = __wt_write(session, fh, (wt_off_t)0, (size_t)allocsize, desc);
+#endif 
 	__wt_scr_free(session, &buf);
 	return (ret);
 }
@@ -320,7 +334,10 @@ __desc_read(WT_SESSION_IMPL *session, WT_BLOCK *block)
 	WT_DECL_ITEM(buf);
 	WT_DECL_RET;
 	uint32_t checksum_calculate, checksum_tmp;
-
+#if defined (UNIV_PMEMOBJ_BUF)
+	WT_CONNECTION_IMPL *conn;
+	conn = S2C(session);
+#endif
 	/* If in-memory, we don't read or write the descriptor structure. */
 	if (F_ISSET(S2C(session), WT_CONN_IN_MEMORY))
 		return (0);
@@ -329,8 +346,18 @@ __desc_read(WT_SESSION_IMPL *session, WT_BLOCK *block)
 	WT_RET(__wt_scr_alloc(session, block->allocsize, &buf));
 
 	/* Read the first allocation-sized block and verify the file format. */
+#if defined (UNIV_PMEMOBJ_BUF)
+	const PMEM_BUF_BLOCK* pblock =
+	   	pm_buf_read(conn->pmw, block->fh->name, (off_t)0, (size_t)block->allocsize, buf->mem);
+   if (pblock == NULL) {
+	   //Read the block from disk as in the original
 	WT_ERR(__wt_read(session,
 	    block->fh, (wt_off_t)0, (size_t)block->allocsize, buf->mem));
+   }
+#else //original
+	WT_ERR(__wt_read(session,
+	    block->fh, (wt_off_t)0, (size_t)block->allocsize, buf->mem));
+#endif //if defined (UNIV_PMEMOBJ_BUF)
 
 	/*
 	 * Handle little- and big-endian objects. Objects are written in little-
