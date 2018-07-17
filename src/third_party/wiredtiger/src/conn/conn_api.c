@@ -1737,11 +1737,25 @@ __conn_single(WT_SESSION_IMPL *session, const char *cfg[])
 		 */
 #define	WT_SINGLETHREAD_STRING	"WiredTiger lock file\n"
 		WT_ERR(__wt_filesize(session, conn->lock_fh, &size));
+#if defined (UNIV_PMEMOBJ_BUF)
+		if ((size_t)size != strlen(WT_SINGLETHREAD_STRING)){
+			//ret = pm_buf_write_with_flusher(conn->pmw, conn->lock_fh->name, 0,
+			//	   	strlen(WT_SINGLETHREAD_STRING),
+			//	   	WT_SINGLETHREAD_STRING);
+			ret = 2;
+			if (ret != PMEM_SUCCESS) {
+				//original
+				WT_ERR(__wt_write(session, conn->lock_fh, (wt_off_t)0,
+							strlen(WT_SINGLETHREAD_STRING),
+							WT_SINGLETHREAD_STRING));
+			}
+		}
+#else //original
 		if ((size_t)size != strlen(WT_SINGLETHREAD_STRING))
 			WT_ERR(__wt_write(session, conn->lock_fh, (wt_off_t)0,
 			    strlen(WT_SINGLETHREAD_STRING),
 			    WT_SINGLETHREAD_STRING));
-
+#endif //defined(UNIV_PMEMOBJ_BUF)
 	}
 
 	/* We own the lock file, optionally create the WiredTiger file. */
@@ -2763,7 +2777,7 @@ wiredtiger_open(const char *home, WT_EVENT_HANDLER *event_handler,
 		WT_ERR_NOTFOUND_OK(ret);
 #endif  //defined(UNIV_PMEMOBJ_BUF_PARTITION)
 
-	//(3) init PM
+	//(3) init PM, create flusher threads inside pm_wrapper_buf_alloc_or_open()
 	ret  = pm_wrapper_buf_alloc_or_open(gb_pmw, buf_size, 32*1024);
 	if (ret != PMEM_SUCCESS) {
 		printf("pm_wrapper_buf_alloc_or_open() has errrors inside wiredtiger_open()\n");
@@ -2825,6 +2839,9 @@ wiredtiger_open(const char *home, WT_EVENT_HANDLER *event_handler,
 
 	/* Start the worker threads and run recovery. */
 	WT_ERR(__wt_connection_workers(session, cfg));
+
+#if defined (UNIV_PMEMOBJ_BUF)
+#endif //if defined (UNIV_PMEMOBJ_BUF)
 
 	WT_STATIC_ASSERT(offsetof(WT_CONNECTION_IMPL, iface) == 0);
 	*connectionp = &conn->iface;

@@ -310,11 +310,12 @@ __wt_desc_write(WT_SESSION_IMPL *session, WT_FH *fh, uint32_t allocsize)
 
 #if defined (UNIV_PMEMOBJ_BUF)
 	//Capture the meta-data write in PMEM
-	ret = pm_buf_write_with_flusher(conn->pmw, fh->name, (off_t)0, (size_t)allocsize, (byte*)desc);
+	//ret = pm_buf_write_with_flusher(conn->pmw, fh->name, (off_t)0, (size_t)allocsize, (byte*)desc);
+	ret = 2;
 	if (ret != PMEM_SUCCESS){
 		printf("The pm_buf_write has error in __wt_desc_write(), check again!\n");
 		printf("file name: %s offset 0 \n", fh->name);
-		exit(0);
+		ret = __wt_write(session, fh, (wt_off_t)0, (size_t)allocsize, desc);
 	}
 #else //original
 	ret = __wt_write(session, fh, (wt_off_t)0, (size_t)allocsize, desc);

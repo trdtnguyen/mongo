@@ -154,10 +154,10 @@ pm_wrapper_buf_alloc_or_open(
 #if defined( UNIV_PMEMOBJ_BUF_STAT)
 	pm_buf_bucket_stat_init(pmw->pbuf);
 #endif	
-#if defined(UNIV_PMEMOBJ_BUF_FLUSHER)
+//#if defined(UNIV_PMEMOBJ_BUF_FLUSHER)
 	//init threads for handle flushing, implement in buf0flu.cc
 	pm_flusher_init(pmw, pmw->PMEM_N_FLUSH_THREADS);
-#endif 
+//#endif 
 #if defined (UNIV_PMEMOBJ_BUF_PARTITION_STAT)
 	pm_filemap_init(pmw->pbuf);
 #endif
@@ -261,10 +261,10 @@ int pm_wrapper_buf_close(PMEM_WRAPPER* pmw) {
 	}
 	free(pmw->pbuf->param_arrs);
 
-#if defined (UNIV_PMEMOBJ_BUF_FLUSHER)
+//#if defined (UNIV_PMEMOBJ_BUF_FLUSHER)
 	//Free the flusher
-	pm_buf_flusher_close(pmw->pbuf);
-#endif 
+	pm_buf_flusher_close(pmw);
+//#endif 
 
 	fclose(pmw->pbuf->deb_file);
 
@@ -686,20 +686,12 @@ pm_buf_write_with_flusher(
 	//NOTE: this size may not fixed in WT
 	page_size = size;
 	//UNIV_MEM_ASSERT_RW(src_data, page_size);
-#if defined(UNIV_PMEMOBJ_BUF_RECOVERY)
 //page 0 is put in the special list
-/*
-	if (page_id == 0) {
+
+	if (offset == 0) {
 //TODO: handle meta pages in MongoDB
 		PMEM_BUF_BLOCK_LIST* pspec_list;
 		PMEM_BUF_BLOCK*		pspec_block;
-		fil_node_t*			node;
-
-		node = pm_get_node_from_space(page_id.space());
-		if (node == NULL) {
-			printf("PMEM_ERROR node from space is NULL\n");
-			assert(0);
-		}
 
 		pspec_list = D_RW(buf->spec_list); 
 
@@ -711,17 +703,17 @@ pm_buf_write_with_flusher(
 			pspec_block = D_RW(D_RW(pspec_list->arr)[i]);
 
 			if (pspec_block->state == PMEM_FREE_BLOCK){
+				//write the new metadata block in the special list
 				break;
 			}	
 			else if (pspec_block->state == PMEM_IN_USED_BLOCK) {
-				if (pspec_block->id.equals_to(page_id) ||
-						strstr(pspec_block->file_name, node->name) != 0) {
+				if (pspec_block->disk_off == offset && 
+						strstr(pspec_block->file_name, fname) != 0) {
 					//overwrite this spec block
-					pspec_block->sync = sync;
 					pmemobj_memcpy_persist(pop, pdata + pspec_block->pmemaddr, src_data, page_size); 
 					//update the file_name, page_id in case of tmp space
-					strcpy(pspec_block->file_name, node->name);
-					pspec_block->id.copy_from(page_id);
+					strcpy(pspec_block->file_name, fname);
+					pspec_block->disk_off = offset;
 
 					pmemobj_rwlock_unlock(pop, &pspec_list->lock);
 
@@ -736,32 +728,20 @@ pm_buf_write_with_flusher(
 			printf("PMEM_BUF Logical error when handle the special list\n");
 			assert(0);
 		}
+		//write the new metadata block in the special list
 		if (i == pspec_list->cur_pages) {
 			pspec_block = D_RW(D_RW(pspec_list->arr)[i]);
 			//add new block to the spec list
-			pspec_block->sync = sync;
-
-			pspec_block->id.copy_from(page_id);
+			pspec_block->disk_off = offset;
 			pspec_block->state = PMEM_IN_USED_BLOCK;
-			//get file handle
-			//[Note] is it safe without acquire fil_system->mutex?
-			node = pm_get_node_from_space(page_id.space());
-			if (node == NULL) {
-				printf("PMEM_ERROR node from space is NULL\n");
-				assert(0);
-			}
-
-			//printf ("PMEM_INFO add file %s fd %d\n", node->name, node->handle.m_file);
-			//pspec_block->file_handle = node->handle;
-			strcpy(pspec_block->file_name, node->name);
-
+			strcpy(pspec_block->file_name, fname);
 			pmemobj_memcpy_persist(pop, pdata + pspec_block->pmemaddr, src_data, page_size); 
 			++(pspec_list->cur_pages);
 
-			printf("Add new block to the spec list, space_no %zu,file %s cur_pages %zu \n", page_id.space(),node->name,  pspec_list->cur_pages);
+			printf("Add new block to the spec list, file %s cur_pages %zu \n", fname,  pspec_list->cur_pages);
 
 			//We do not handle flushing the spec list here
-			if (pspec_list->cur_pages >= pspec_list->max_pages * PMEM_BUF_FLUSH_PCT) {
+			if (pspec_list->cur_pages >= pspec_list->max_pages * pmw->PMEM_BUF_FLUSH_PCT) {
 				printf("We do not handle flushing spec list in this version, adjust the input params to get larger size of spec list\n");
 				assert(0);
 			}
@@ -769,8 +749,7 @@ pm_buf_write_with_flusher(
 		pmemobj_rwlock_unlock(pop, &pspec_list->lock);
 		return PMEM_SUCCESS;
 	} // end if page_no == 0
-*/
-#endif //UNIV_PMEMOBJ_BUF_RECOVERY
+// end handle special list
 
 #if defined (UNIV_PMEMOBJ_BUF_PARTITION)
 	PMEM_LESS_BUCKET_HASH_KEY(hashed, fname, offset);
@@ -1713,11 +1692,11 @@ pm_handle_finished_block_with_flusher(
  * */
 const PMEM_BUF_BLOCK* 
 pm_buf_read(
-		   	PMEM_WRAPPER*			pmw,
-			const char*			fname,
+		   	PMEM_WRAPPER*	pmw,
+			const char*		fname,
 		   	const off_t		offset,
 		   	const size_t	size,
-		   	byte*				data
+		   	byte*			data
 		   )
 {
 	
@@ -1749,10 +1728,8 @@ pm_buf_read(
 // Case 1: read through buffer pool (handle in this function, during the server working time)
 // Case 2: read without buffer pool during the sever stat/stop 
 */
-#if defined (UNIV_PMEMOBJ_BUF_RECOVERY)
 	//TODO: Handle page_id 0 in MongoDB
-/*
-	if (page_id == 0) {
+	if (offset == 0) {
 		//PMEM_BUF_BLOCK_LIST* pspec_list;
 		PMEM_BUF_BLOCK*		pspec_block;
 
@@ -1762,15 +1739,15 @@ pm_buf_read(
 			//const PMEM_BUF_BLOCK* pspec_block = D_RO(D_RO(pspec_list->arr)[i]);
 			if (	D_RO(D_RO(D_RO(buf->spec_list)->arr)[i]) != NULL && 
 					D_RO(D_RO(D_RO(buf->spec_list)->arr)[i])->state != PMEM_FREE_BLOCK &&
-					D_RO(D_RO(D_RO(buf->spec_list)->arr)[i])->id == page_id) {
+					strstr(D_RO(D_RO(D_RO(buf->spec_list)->arr)[i])->file_name, fname) != 0) {
 				pspec_block = D_RW(D_RW(D_RW(buf->spec_list)->arr)[i]);
 				pmemobj_rwlock_rdlock(pop, &pspec_block->lock);
 				//found
 				pdata = buf->p_align;
 				memcpy(data, pdata + pspec_block->pmemaddr, pspec_block->size); 
 
-				printf("==> PMEM_DEBUG read page 0 (case 1) of space %zu file %s\n",
-				pspec_block->page_id, pspec_block->file_name);
+				printf("==> PMEM_DEBUG read page 0 (case 1) of file %s\n",
+				pspec_block->file_name);
 
 				pmemobj_rwlock_unlock(pop, &pspec_block->lock);
 				return pspec_block;
@@ -1782,8 +1759,6 @@ pm_buf_read(
 		//this page 0 is not in PMEM, return NULL to read it from disk
 		return NULL;
 	} //end if page_no == 0
-*/
-#endif //UNIV_PMEMOBJ_BUF_RECOVERY
 
 #if defined (UNIV_PMEMOBJ_BUF_PARTITION)
 	PMEM_LESS_BUCKET_HASH_KEY(hashed, fname, offset);
@@ -1914,7 +1889,6 @@ pm_buf_read_page_zero(
 	//pmemobj_rwlock_unlock(pop, &pspec_list->lock);
 	//this page 0 is not in PMEM, return NULL to read it from disk
 	return NULL;
-
 }
 
 /*

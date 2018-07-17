@@ -54,6 +54,7 @@ pm_wrapper_create(
 	if (!pmw)
 		goto err;
 	//Get the reference to the session in WiredTiger
+	//Debug: assign this session at wiredtiger_open() cause error 
 	pmw->session = session;
 
 	pmw->is_new = true;

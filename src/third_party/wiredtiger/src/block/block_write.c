@@ -243,6 +243,7 @@ __block_write_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 	fh = block->fh;
 #if defined (UNIV_PMEMOBJ_BUF)
 	WT_CONNECTION_IMPL *conn = S2C(session);
+	bool skipwrite;
 #endif 
 	/*
 	 * Clear the block header to ensure all of it is initialized, even the
@@ -339,10 +340,29 @@ __block_write_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 	/* Write the block. */
 #if defined (UNIV_PMEMOBJ_BUF)
 	//Capture this write in our PMEM_BUF
-	ret = pm_buf_write_with_flusher(conn->pmw, fh->name, offset, align_size, buf->mem);
-	if (ret != PMEM_SUCCESS){
+	skipwrite = true;
+
+	printf("write file %s offset %zu size %zu\n", fh->name, offset, align_size);
+	//Do not capture writes on WiredTiger.wt
+	if( strstr(fh->name, "WiredTiger.wt") == NULL){
+		skipwrite = false;
+		ret = pm_buf_write_with_flusher(conn->pmw, fh->name, offset, align_size, buf->mem);
+	}
+	//ret = 2;
+	if (ret != PMEM_SUCCESS || skipwrite){
 		printf("The pm_buf_write has error in __wt_write_off(), check again!\n");	
-		exit(0);
+		//The original
+		if ((ret =
+					__wt_write(session, fh, offset, align_size, buf->mem)) != 0) {
+			printf("__wt_write() return non-zero!\n");
+			if (!caller_locked)
+				__wt_spin_lock(session, &block->live_lock);
+			WT_TRET(__wt_block_off_free(
+						session, block, offset, (wt_off_t)align_size));
+			if (!caller_locked)
+				__wt_spin_unlock(session, &block->live_lock);
+			WT_RET(ret);
+		}
 	}
 #else
 	//The original
