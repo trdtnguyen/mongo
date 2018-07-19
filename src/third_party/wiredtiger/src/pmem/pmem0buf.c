@@ -135,6 +135,21 @@ pm_wrapper_buf_alloc_or_open(
 				pmw->pbuf->size, D_RW(pmw->pbuf->free_pool)->cur_lists);
 		//Check the page_size of the previous run with current run
 		if (pmw->pbuf->page_size != page_size) {
+	//This code is test for recovery, it has lock/unlock mutex. Note that we need the filename in pmem block because at recovery time, the space instance related with pmem_block may not load in the system. In that case, filename is used for ibd_load() func
+	//If the performance reduce, then remove it
+	//TODO: map to MongoDB
+	/*
+	fil_node_t*			node;
+
+	node = pm_get_node_from_space(page_id.space());
+	if (node == NULL) {
+		printf("PMEM_ERROR node from space is NULL\n");
+		assert(0);
+	}
+	strcpy(pfree_block->file_name, node->name);
+	//end code
+	*/	
+	//D_RW(free_block)->bpage = bpage;
 			printf("PMEM_ERROR: the pmem buffer size = %zu is different with UNIV_PAGE_SIZE = %zu, you must use the same page_size!!!\n ",
 					pmw->pbuf->page_size, page_size);
 			assert(0);
@@ -605,7 +620,7 @@ pm_buf_block_init(
 {
 	struct list_constr_args *args = (struct list_constr_args *) arg;
 	PMEM_BUF_BLOCK* block = (PMEM_BUF_BLOCK*) ptr;
-	block->size = args->size;
+	block->max_size = block->size = args->size;
 	block->check = args->check;
 	block->state = args->state;
 	TOID_ASSIGN(block->list, (args->list).oid);
@@ -653,12 +668,19 @@ PMEM_BUF* pm_pop_get_buf(PMEMobjpool* pop) {
 int
 pm_buf_write_with_flusher(
 		   	PMEM_WRAPPER*	pmw,
-		   	const char*		fname,
+			const char*		fname,
+		   	uint64_t		name_hash,
 		   	off_t			offset,
 		   	size_t			size,
 		   	byte*			src_data)
 {
 	
+	if (strstr (fname, "ycsb") == NULL  
+			) {
+		printf("PMEM_INFO: skip write file %s, offset %zu, size %zu\n",
+				fname, offset, size);
+		return PMEM_ERROR;
+	}
 	WT_SESSION_IMPL *session = pmw->session;
 	PMEM_BUF*		buf = pmw->pbuf;
 	PMEMobjpool*	pop = pmw->pop;
@@ -687,9 +709,12 @@ pm_buf_write_with_flusher(
 	page_size = size;
 	//UNIV_MEM_ASSERT_RW(src_data, page_size);
 //page 0 is put in the special list
-
+	if (strstr(fname, "ycsb") == NULL){
+		printf("====> PMEM_DEBUG pm_write file %s offset %zu size %zu\n", fname, offset, size);
+	}
 	if (offset == 0) {
 //TODO: handle meta pages in MongoDB
+		printf("pm_buf_write offset 0 in file %s size %zu\n", fname, size);
 		PMEM_BUF_BLOCK_LIST* pspec_list;
 		PMEM_BUF_BLOCK*		pspec_block;
 
@@ -708,12 +733,14 @@ pm_buf_write_with_flusher(
 			}	
 			else if (pspec_block->state == PMEM_IN_USED_BLOCK) {
 				if (pspec_block->disk_off == offset && 
-						strstr(pspec_block->file_name, fname) != 0) {
+						pspec_block->name_hash == name_hash) {
 					//overwrite this spec block
 					pmemobj_memcpy_persist(pop, pdata + pspec_block->pmemaddr, src_data, page_size); 
 					//update the file_name, page_id in case of tmp space
 					strcpy(pspec_block->file_name, fname);
 					pspec_block->disk_off = offset;
+					//update size is necessary in WT
+					pspec_block->size = size;
 
 					pmemobj_rwlock_unlock(pop, &pspec_list->lock);
 
@@ -733,8 +760,12 @@ pm_buf_write_with_flusher(
 			pspec_block = D_RW(D_RW(pspec_list->arr)[i]);
 			//add new block to the spec list
 			pspec_block->disk_off = offset;
+			//update size is necessary in WT
+			pspec_block->size = size;
+
 			pspec_block->state = PMEM_IN_USED_BLOCK;
 			strcpy(pspec_block->file_name, fname);
+			pspec_block->name_hash = name_hash;
 			pmemobj_memcpy_persist(pop, pdata + pspec_block->pmemaddr, src_data, page_size); 
 			++(pspec_list->cur_pages);
 
@@ -754,9 +785,10 @@ pm_buf_write_with_flusher(
 #if defined (UNIV_PMEMOBJ_BUF_PARTITION)
 	PMEM_LESS_BUCKET_HASH_KEY(hashed, fname, offset);
 #else //EVEN_BUCKET
-	//PMEM_HASH_KEY(hashed, page_id.fold(), pmw->PMEM_N_BUCKETS);
 	//TODO: implement fold() in MongoDB
-	PMEM_HASH_KEY(hashed, offset, pmw->PMEM_N_BUCKETS);
+	
+	//PMEM_HASH_KEY(hashed, offset, name_hash, pmw->PMEM_N_BUCKETS);
+	hashed = ((offset / 4096) +  (name_hash << 20)) % pmw->PMEM_N_BUCKETS;
 #endif
 
 retry:
@@ -817,7 +849,7 @@ retry:
 		}
 		else if(pfree_block->state == PMEM_IN_USED_BLOCK) {
 			if (pfree_block->disk_off == offset &&
-					strstr(pfree_block->file_name, fname) != 0) {
+					pfree_block->name_hash ==  name_hash) {
 				//overwrite the old page
 				//if(is_lock_free_block)
 				//pmemobj_rwlock_wrlock(pop, &pfree_block->lock);
@@ -825,6 +857,9 @@ retry:
 #if defined (UNIV_PMEMOBJ_BUF_STAT)
 				++buf->bucket_stats[hashed].n_overwrites;
 #endif
+				//update size is necessary in WT
+				pfree_block->size = size;
+
 				//if(is_lock_free_block)
 				//pmemobj_rwlock_unlock(pop, &pfree_block->lock);
 				pmemobj_rwlock_unlock(pop, &phashlist->lock);
@@ -855,25 +890,13 @@ retry:
 	pm_filemap_update_items(buf, fname, offset, hashed, PMEM_BUCKET_SIZE);
 	pmemobj_rwlock_unlock(pop, &buf->filemap->lock);
 #endif 
-	//This code is test for recovery, it has lock/unlock mutex. Note that we need the filename in pmem block because at recovery time, the space instance related with pmem_block may not load in the system. In that case, filename is used for ibd_load() func
-	//If the performance reduce, then remove it
-	//TODO: map to MongoDB
-	/*
-	fil_node_t*			node;
-
-	node = pm_get_node_from_space(page_id.space());
-	if (node == NULL) {
-		printf("PMEM_ERROR node from space is NULL\n");
-		assert(0);
-	}
-	strcpy(pfree_block->file_name, node->name);
-	//end code
-	*/	
-	//D_RW(free_block)->bpage = bpage;
 
 	pfree_block->disk_off = offset;
 	strcpy(pfree_block->file_name, fname);
-	
+	pfree_block->name_hash = name_hash;
+	//update size is necessary in WT
+	pfree_block->size = size;
+
 	//In WT, the on-disk page sizes are various	
 	//In current version, we just allocate the maximum size (take the simple apporach for the trade-off of waste PM)
 	//assert(pfree_block->size == size);
@@ -940,6 +963,7 @@ int
 pm_buf_write_with_flusher_append(
 		   	PMEM_WRAPPER*	pmw,
 		   	char*			fname,
+		   	uint64_t		name_hash,
 		   	off_t			offset,
 		   	size_t			size,
 		   	byte*			src_data)
@@ -980,7 +1004,7 @@ pm_buf_write_with_flusher_append(
 	PMEM_LESS_BUCKET_HASH_KEY(hashed, fname, offset);
 #else //EVEN_BUCKET
 	//PMEM_HASH_KEY(hashed, page_id.fold(), pmw->PMEM_N_BUCKETS);
-	PMEM_HASH_KEY(hashed, offset, pmw->PMEM_N_BUCKETS);
+	PMEM_HASH_KEY(hashed, offset, name_hash, pmw->PMEM_N_BUCKETS);
 #endif
 
 retry:
@@ -1045,7 +1069,8 @@ retry:
 
 	pfree_block->disk_off = offset;
 	strcpy(pfree_block->file_name, fname);
-	
+	pfree_block->name_hash = name_hash;
+
 	assert(pfree_block->size == size);
 	assert(pfree_block->state == PMEM_FREE_BLOCK);
 	pfree_block->state = PMEM_IN_USED_BLOCK;
@@ -1227,6 +1252,8 @@ pm_buf_flush_list(
 	void*			buf;
 
 	WT_FH ** fh_arr;
+	WT_FH* fh_cur;
+
 	PMEM_BUF_BLOCK* pblock;
 	PMEM_BUF*		pmem_buf = pmw->pbuf;
 	WT_SESSION_IMPL *session = pmw->session;
@@ -1256,9 +1283,9 @@ pm_buf_flush_list(
 // use __handle_search() to get the WT_FH from the file name
 	
 	fh_arr = (WT_FH**) calloc(plist->max_pages, sizeof(WT_FH*));
-	for (fh_i = 0; fh_i < plist->max_pages; fh_i++) {
-		fh_arr[fh_i] = (WT_FH*) malloc(sizeof(WT_FH));
-	}
+	//for (fh_i = 0; fh_i < plist->max_pages; fh_i++) {
+	//	fh_arr[fh_i] = (WT_FH*) malloc(sizeof(WT_FH));
+	//}
 
 	fh_cnt = 0;
 
@@ -1275,19 +1302,38 @@ pm_buf_flush_list(
 		//Change the state of the block
 		pblock->state = PMEM_IN_FLUSH_BLOCK;
 		//(1) Open the file to get the fh
-		ret =__wt_open(session, pblock->file_name, WT_FS_OPEN_FILE_TYPE_DATA, flags, &fh_arr[i]);
+		ret =__wt_open(session, pblock->file_name, WT_FS_OPEN_FILE_TYPE_DATA, flags, &fh_cur);
 		assert(!ret);
-		ret = __wt_write(session, fh_arr[i], pblock->disk_off, pblock->size, buf);
+		ret = __wt_write(session, fh_cur, pblock->disk_off, pblock->size, buf);
+		if (ret != 0){
+			printf("Inside pm_buf_flush_list(), __wt_write() has errror\n Detail: file %s offset %zu size %zu\n", fh_cur->name, pblock->disk_off, pblock->size);
+		}
+
+		//Add the file handler to the list for flushing 
+		for (fh_i = 0; fh_i < fh_cnt; ++fh_i) {
+			if (fh_arr[fh_i]->name_hash == fh_cur->name_hash){
+				//this file is existed in the fh_arr list, do not add it	
+				break;
+			}
+		}
+		if (fh_i == fh_cnt){
+			//add new entry in the fh_arr list
+			fh_arr[fh_i] = fh_cur;
+			fh_cnt++;
+		}
 	}//end for
 	//(2) Since the write is sync, at this point the write is finish
-		pm_handle_finished_list_with_flusher(pmw, plist);
+	pm_handle_finished_list_with_flusher(pmw, plist);
 	//(3) flush
-	for (i = 0; i < plist->max_pages; ++i) {
-		__wt_fsync(session, fh_arr[i], true);
-
-		free(fh_arr[i]);
-		fh_arr[i] = NULL;
+	for (fh_i = 0; fh_i < fh_cnt; ++fh_i) {
+		//printf("PMEM_DEBUG: propagate and fsync file %s\n", fh_arr[fh_i]->name);
+		__wt_fsync(session, fh_arr[fh_i], true);
+		if (fh_arr[fh_i] != NULL){
+			fh_arr[fh_i] = NULL;
+		}
 	}
+
+	//(4) Free the memory
 	free (fh_arr);
 	fh_arr = NULL;
 	
@@ -1426,7 +1472,7 @@ pm_handle_finished_block_no_free_pool(
 		//Now all pages in this list are persistent in disk
 		//(0) flush spaces
 #if defined(UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
-		printf("finish list %zu hash_id %zu \n",
+		printf("finish list %zu hash_id %d \n",
 				pflush_list->list_id, pflush_list->hashed_id);
 #endif
 		//TODO: Research flush in MongoDB
@@ -1483,7 +1529,7 @@ pm_handle_finished_list_with_flusher(
 	pmemobj_rwlock_wrlock(pop, &pflush_list->lock);
 
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
-	printf("\n [*****[4]  BEGIN finish AIO list %zu hashed_id %zu\n",
+	printf("\n [*****[4]  BEGIN finish AIO list %zu hashed_id %d\n",
 			pflush_list->list_id, pflush_list->hashed_id);
 #endif
 	//Now all pages in this list are persistent in disk
@@ -1550,7 +1596,7 @@ pm_handle_finished_list_with_flusher(
 		__wt_cond_signal(session, buf->free_pool_cond);
 		
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
-		printf("\n *****[4] END finish AIO List %zu]\n", pflush_list->list_id);
+		printf("\n *****[4] END finish AIO List %zu, cur free pool size %zu]\n", pflush_list->list_id, pfree_pool->cur_lists);
 #endif
 		pmemobj_rwlock_unlock(pop, &pfree_pool->lock);
 	//the list has some unfinished aio	
@@ -1596,7 +1642,7 @@ pm_handle_finished_block_with_flusher(
 
 	if (pflush_list->n_aio_pending + pflush_list->n_sio_pending == 0) {
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
-		printf("\n [*****[4]  BEGIN finish AIO list %zu hashed_id %zu\n",
+		printf("\n [*****[4]  BEGIN finish AIO list %zu hashed_id %d\n",
 		   	pflush_list->list_id, pflush_list->hashed_id);
 #endif
 		//Now all pages in this list are persistent in disk
@@ -1694,6 +1740,7 @@ const PMEM_BUF_BLOCK*
 pm_buf_read(
 		   	PMEM_WRAPPER*	pmw,
 			const char*		fname,
+			uint64_t		name_hash,
 		   	const off_t		offset,
 		   	const size_t	size,
 		   	byte*			data
@@ -1739,7 +1786,7 @@ pm_buf_read(
 			//const PMEM_BUF_BLOCK* pspec_block = D_RO(D_RO(pspec_list->arr)[i]);
 			if (	D_RO(D_RO(D_RO(buf->spec_list)->arr)[i]) != NULL && 
 					D_RO(D_RO(D_RO(buf->spec_list)->arr)[i])->state != PMEM_FREE_BLOCK &&
-					strstr(D_RO(D_RO(D_RO(buf->spec_list)->arr)[i])->file_name, fname) != 0) {
+					D_RO(D_RO(D_RO(buf->spec_list)->arr)[i])->name_hash ==  name_hash ) {
 				pspec_block = D_RW(D_RW(D_RW(buf->spec_list)->arr)[i]);
 				pmemobj_rwlock_rdlock(pop, &pspec_block->lock);
 				//found
@@ -1764,7 +1811,7 @@ pm_buf_read(
 	PMEM_LESS_BUCKET_HASH_KEY(hashed, fname, offset);
 #else //EVEN_BUCKET
 	//PMEM_HASH_KEY(hashed, page_id.fold(), pmw->PMEM_N_BUCKETS);
-	PMEM_HASH_KEY(hashed, offset, pmw->PMEM_N_BUCKETS);
+	PMEM_HASH_KEY(hashed, offset, name_hash, pmw->PMEM_N_BUCKETS);
 #endif
 
 	TOID_ASSIGN(cur_list, (D_RO(buf->buckets)[hashed]).oid);
@@ -1799,7 +1846,7 @@ pm_buf_read(
 			if (	D_RO(D_RO(D_RO(cur_list)->arr)[i]) != NULL && 
 					D_RO(D_RO(D_RO(cur_list)->arr)[i])->state != PMEM_FREE_BLOCK &&
 					D_RO(D_RO(D_RO(cur_list)->arr)[i])->disk_off == offset &&
-					strstr(D_RO(D_RO(D_RO(cur_list)->arr)[i])->file_name, fname) != 0) {
+					D_RO(D_RO(D_RO(cur_list)->arr)[i])->name_hash == name_hash) {
 				pblock = D_RW(D_RW(D_RW(cur_list)->arr)[i]);
 				//if(is_lock_on_read)
 				pmemobj_rwlock_rdlock(pop, &pblock->lock);
@@ -2041,7 +2088,7 @@ pm_buf_assign_flusher(
 
 	PMEM_FLUSHER* flusher = buf->flusher;
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
-	printf("[pm_buf_assign_flusher begin hashed_id %zu phashlist %zu flusher size = %zu cur request = %zu ", phashlist->hashed_id, phashlist->list_id, flusher->size, flusher->n_requested);
+	printf("[pm_buf_assign_flusher begin hashed_id %d phashlist %zu flusher size = %zu cur request = %zu ", phashlist->hashed_id, phashlist->list_id, flusher->size, flusher->n_requested);
 #endif
 assign_worker:
 	//mutex_enter(&flusher->mutex);
@@ -2075,7 +2122,7 @@ assign_worker:
 			printf("\n in [1.1] try to trigger flusher list_id = %zu\n", phashlist->list_id);
 #endif
 				//Triger the propagation processj
-				__wt_cond_signal(session, flusher->is_req_not_empty_cond);
+				__wt_cond_signal(flusher->worker_sessions[flusher->tail], flusher->is_req_not_empty_cond);
 			}
 
 			if (flusher->n_requested >= flusher->size) {
@@ -2166,6 +2213,9 @@ WT_RET(__wt_cond_alloc(session, "flusher_is_all_closed", &flusher->is_all_closed
 		    true, session_flags, &flusher->worker_sessions[i]));
 	}
 
+	flusher->is_running = true;
+
+	printf("======>   PMEM_INFO: start %zu flusher threads\n", size);
 	for (i = 0; i < size; i++) {
 		//start the worker threads
 		WT_RET(__wt_thread_create(session, &flusher->worker_tids[i],
@@ -2194,6 +2244,8 @@ pm_buf_flusher_close(
 	buf = pmw->pbuf;
 	flusher = buf->flusher;
 	
+	flusher->is_running = false;
+
 	//wait for all workers finish their work
 	while (flusher->n_workers > 0) {
 		//os_thread_sleep(10000);
@@ -2251,7 +2303,7 @@ static void* pm_flusher_worker (void* arg) {
 	WT_CONNECTION_IMPL *conn;
 	WT_SESSION *wt_session;
 	WT_SESSION_IMPL *session;
-	uint32_t i;
+	size_t i;
 	
 	session = arg;	
 	conn = S2C(session);
@@ -2276,6 +2328,7 @@ static void* pm_flusher_worker (void* arg) {
 #endif
 		//looking for a full list in wait-list and flush it
 		__wt_spin_lock(session, &flusher->flusher_lock);
+
 		if (flusher->n_requested > 0) {
 
 			for (i = 0; i < flusher->size; i++) {
@@ -2313,12 +2366,15 @@ static void* pm_flusher_worker (void* arg) {
 			else {
 				//mutex_exit(&flusher->mutex);
 				__wt_spin_unlock(session, &flusher->flusher_lock);
+				//We end the for loop for this thread
 				break;
 			}
 		}
+
 		//mutex_exit(&flusher->mutex);
 		__wt_spin_unlock(session, &flusher->flusher_lock);
 
+		//Repeat waiting...
 	} //end for loop
 
 	__wt_spin_lock(session, &flusher->flusher_lock);

@@ -245,7 +245,9 @@ __wt_block_checkpoint(WT_SESSION_IMPL *session,
 {
 	WT_BLOCK_CKPT *ci;
 	WT_DECL_RET;
-
+#if defined (UNIV_PMEMOBJ_BUF)
+	printf("=====> PMEM_DEBUG: __wt_block_checkpoint() for %s\n", block->name);
+#endif //if defined (UNIV_PMEMOBJ_BUF)
 	ci = &block->live;
 
 	/* Switch to first-fit allocation. */

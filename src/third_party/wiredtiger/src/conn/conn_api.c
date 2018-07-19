@@ -1737,25 +1737,24 @@ __conn_single(WT_SESSION_IMPL *session, const char *cfg[])
 		 */
 #define	WT_SINGLETHREAD_STRING	"WiredTiger lock file\n"
 		WT_ERR(__wt_filesize(session, conn->lock_fh, &size));
-#if defined (UNIV_PMEMOBJ_BUF)
-		if ((size_t)size != strlen(WT_SINGLETHREAD_STRING)){
-			//ret = pm_buf_write_with_flusher(conn->pmw, conn->lock_fh->name, 0,
-			//	   	strlen(WT_SINGLETHREAD_STRING),
-			//	   	WT_SINGLETHREAD_STRING);
-			ret = 2;
-			if (ret != PMEM_SUCCESS) {
-				//original
-				WT_ERR(__wt_write(session, conn->lock_fh, (wt_off_t)0,
-							strlen(WT_SINGLETHREAD_STRING),
-							WT_SINGLETHREAD_STRING));
-			}
-		}
-#else //original
+//#if defined (UNIV_PMEMOBJ_BUF)
+//		if ((size_t)size != strlen(WT_SINGLETHREAD_STRING)){
+//			ret = pm_buf_write_with_flusher(conn->pmw, conn->lock_fh->name, conn->lock_fh->name_hash,
+//				   	0, strlen(WT_SINGLETHREAD_STRING), WT_SINGLETHREAD_STRING);
+//			//ret = 2;
+//			if (ret != PMEM_SUCCESS) {
+//				//original
+//				WT_ERR(__wt_write(session, conn->lock_fh, (wt_off_t)0,
+//							strlen(WT_SINGLETHREAD_STRING),
+//							WT_SINGLETHREAD_STRING));
+//			}
+//		}
+//#else //original
 		if ((size_t)size != strlen(WT_SINGLETHREAD_STRING))
 			WT_ERR(__wt_write(session, conn->lock_fh, (wt_off_t)0,
 			    strlen(WT_SINGLETHREAD_STRING),
 			    WT_SINGLETHREAD_STRING));
-#endif //defined(UNIV_PMEMOBJ_BUF)
+//#endif //defined(UNIV_PMEMOBJ_BUF)
 	}
 
 	/* We own the lock file, optionally create the WiredTiger file. */
@@ -1805,7 +1804,16 @@ __conn_single(WT_SESSION_IMPL *session, const char *cfg[])
 			    "read-only configuration");
 		WT_ERR(__wt_snprintf_len_set(buf, sizeof(buf), &len,
 		    "%s\n%s\n", WT_WIREDTIGER, WIREDTIGER_VERSION_STRING));
-		WT_ERR(__wt_write(session, fh, (wt_off_t)0, len, buf));
+//#if defined (UNIV_PMEMOBJ_BUF)
+//			ret = pm_buf_write_with_flusher(conn->pmw, fh->name, fh->name_hash,	0, len, buf);
+//			//ret = 2;
+//			if (ret != PMEM_SUCCESS) {
+//				//original
+//				WT_ERR(__wt_write(session, fh, (wt_off_t)0, len, buf));
+//			}
+//#else //original
+//		WT_ERR(__wt_write(session, fh, (wt_off_t)0, len, buf));
+//#endif //defined (UNIV_PMEMOBJ_BUF)
 		WT_ERR(__wt_fsync(session, fh, true));
 	} else {
 		/*

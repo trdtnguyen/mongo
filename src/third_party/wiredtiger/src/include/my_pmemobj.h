@@ -351,6 +351,7 @@ ssize_t  pm_wrapper_dbw_io(PMEM_WRAPPER* pmw,
 struct list_constr_args{
 	off_t			offset;
 	char*			file_name;
+	uint64_t		name_hash;
 	size_t			size;
 	int							check;
 	PMEM_BLOCK_STATE			state;
@@ -366,8 +367,10 @@ struct __pmem_buf_block_t{
 	PMEMrwlock					lock; //this lock protects remain properties
 
 	off_t						disk_off; //offset on-disk page
+	size_t						max_size;
 	size_t						size;
 	char						file_name[256];
+	uint64_t					name_hash;
 	int							check; //PMEM AIO flag used in fil_aio_wait
 	bool	sync;
 	PMEM_BLOCK_STATE			state;
@@ -555,7 +558,8 @@ pm_buf_single_list_init(
 int
 pm_buf_write_with_flusher(
 		   	PMEM_WRAPPER*	pmw,
-		   	const char*			fname,
+			const char*		fname,
+		   	uint64_t		name_hash,
 		   	off_t			offset,
 		   	size_t			size,
 		   	byte*			src_data);
@@ -564,6 +568,7 @@ int
 pm_buf_write_with_flusher_append(
 		   	PMEM_WRAPPER*	pmw,
 		   	char*			fname,
+		   	uint64_t		name_hash,
 		   	off_t			offset,
 		   	size_t			size,
 		   	byte*			src_data);
@@ -573,7 +578,8 @@ pm_buf_write_with_flusher_append(
 const PMEM_BUF_BLOCK*
 pm_buf_read(
 		   	PMEM_WRAPPER*	pmw,
-			const char*			fname,
+			const char*		fname,
+			uint64_t		name_hash,
 		   	const off_t		offset,
 		   	const size_t	size,
 		   	byte*			data
@@ -778,14 +784,17 @@ hash_f1(
 		uint64_t		S,
 		uint64_t		P);
 
+
 #define PMEM_BUF_LIST_INSERT(pop, list, entries, type, func, args) do {\
 	POBJ_LIST_INSERT_NEW_HEAD(pop, &list.head, entries, sizeof(type), func, &args); \
 	list.cur_size++;\
 }while (0)
 
+//hashed = ((key2 << 20) + key1 + key2) ^ PMEM_HASH_MASK
+
 /*Evenly distributed map that one space_id evenly distribute across buckets*/
-#define PMEM_HASH_KEY(hashed, key, n) do {\
-	hashed = key ^ PMEM_HASH_MASK;\
+#define PMEM_HASH_KEY(hashed, key1, key2, n) do {\
+	hashed = (key1 + (key2 % n));\
 	hashed = hashed % n;\
 }while(0)
 

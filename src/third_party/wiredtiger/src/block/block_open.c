@@ -309,14 +309,14 @@ __wt_desc_write(WT_SESSION_IMPL *session, WT_FH *fh, uint32_t allocsize)
 #endif
 
 #if defined (UNIV_PMEMOBJ_BUF)
-	//Capture the meta-data write in PMEM
-	//ret = pm_buf_write_with_flusher(conn->pmw, fh->name, (off_t)0, (size_t)allocsize, (byte*)desc);
-	ret = 2;
+	ret = pm_buf_write_with_flusher(conn->pmw, fh->name, fh->name_hash, (off_t)0, (size_t)allocsize, (byte*)desc);
+
 	if (ret != PMEM_SUCCESS){
-		printf("The pm_buf_write has error in __wt_desc_write(), check again!\n");
-		printf("file name: %s offset 0 \n", fh->name);
+		printf("Inside __wt_desc_write(), pm_buf_write() has error! Use the original __wt_write()\n");
 		ret = __wt_write(session, fh, (wt_off_t)0, (size_t)allocsize, desc);
 	}
+	//Do not capture the meta-data
+	//ret = __wt_write(session, fh, (wt_off_t)0, (size_t)allocsize, desc);
 #else //original
 	ret = __wt_write(session, fh, (wt_off_t)0, (size_t)allocsize, desc);
 #endif 
@@ -349,7 +349,7 @@ __desc_read(WT_SESSION_IMPL *session, WT_BLOCK *block)
 	/* Read the first allocation-sized block and verify the file format. */
 #if defined (UNIV_PMEMOBJ_BUF)
 	const PMEM_BUF_BLOCK* pblock =
-	   	pm_buf_read(conn->pmw, block->fh->name, (off_t)0, (size_t)block->allocsize, buf->mem);
+	   	pm_buf_read(conn->pmw, block->fh->name, block->fh->name_hash, (off_t)0, (size_t)block->allocsize, buf->mem);
    if (pblock == NULL) {
 	   //Read the block from disk as in the original
 	WT_ERR(__wt_read(session,

@@ -191,13 +191,31 @@ __wt_block_read_off_blind(
 	WT_BLOCK_HEADER *blk;
 	uint32_t checksum, size;
 
+#if defined (UNIV_PMEMOBJ_BUF)
+	WT_CONNECTION_IMPL *conn;
+	conn = S2C(session);
+#endif //if defined (UNIV_PMEMOBJ_BUF)
+
 	/*
 	 * Make sure the buffer is large enough for the header and read the
 	 * the first allocation-size block.
 	 */
 	WT_RET(__wt_buf_init(session, buf, block->allocsize));
+#if defined (UNIV_PMEMOBJ_BUF)
+	if (strstr(block->name, "WiredTiger") != NULL || 
+			strstr(block->name, "sizeStorer") != NULL ||
+			strstr(block->name, "local") != NULL ) {
+		goto skip_pmem_read;
+	}
+	const PMEM_BUF_BLOCK* pblock =
+		pm_buf_read(conn->pmw, block->fh->name, block->fh->name_hash, offset, block->allocsize, buf->mem);
+	if (pblock == NULL){
+skip_pmem_read:		WT_RET(__wt_read(session, block->fh, offset, (size_t)block->allocsize, buf->mem));
+	}
+#else
 	WT_RET(__wt_read(
 	    session, block->fh, offset, (size_t)block->allocsize, buf->mem));
+#endif
 	blk = WT_BLOCK_HEADER_REF(buf->mem);
 	__wt_block_header_byteswap(blk);
 
@@ -256,10 +274,16 @@ __wt_block_read_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 	}
 	WT_RET(__wt_buf_init(session, buf, bufsize));
 #if defined(UNIV_PMEMOBJ_BUF)
+	//skip read metadata file
+	if (strstr(block->name, "WiredTiger") != NULL || 
+			strstr(block->name, "sizeStorer") != NULL ||
+			strstr(block->name, "local") != NULL ) {
+		goto skip_pmem_read;
+	}
 	const PMEM_BUF_BLOCK* pblock =
-		pm_buf_read(conn->pmw, block->fh->name, offset, size, buf->mem);
+		pm_buf_read(conn->pmw, block->fh->name, block->fh->name_hash, offset, size, buf->mem);
 	if (pblock == NULL){
-		WT_RET(__wt_read(session, block->fh, offset, size, buf->mem));
+skip_pmem_read:		WT_RET(__wt_read(session, block->fh, offset, size, buf->mem));
 	}
 #else
 	WT_RET(__wt_read(session, block->fh, offset, size, buf->mem));
