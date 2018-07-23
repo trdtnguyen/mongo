@@ -170,7 +170,11 @@ __curfile_reset(WT_CURSOR *cursor)
 	CURSOR_API_CALL_PREPARE_ALLOWED(cursor, session, reset, cbt->btree);
 
 	ret = __wt_btcur_reset(cbt);
-
+#if defined (UNIV_PMEMOBJ_BUF)
+	if (ret != 0){
+		printf("===> ERROR! __curfile_reset() return non zero\n");
+	}
+#endif
 	/* Reset maintains no position, key or value. */
 	WT_ASSERT(session,
 	    !F_ISSET(cbt, WT_CBT_ACTIVE) &&

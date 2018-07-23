@@ -681,6 +681,12 @@ pm_buf_write_with_flusher(
 				fname, offset, size);
 		return PMEM_ERROR;
 	}
+
+	if (pmw->pbuf->page_size < size){
+		printf("XXXXX PMEM_INFO: in pm_buf_write_with_flusher(), write size %zu exceed the max size %zu, file %s offset %zu \n", size, pmw->pbuf->page_size, fname, offset);
+		return PMEM_ERROR;
+	}	
+
 	WT_SESSION_IMPL *session = pmw->session;
 	PMEM_BUF*		buf = pmw->pbuf;
 	PMEMobjpool*	pop = pmw->pop;
@@ -709,9 +715,6 @@ pm_buf_write_with_flusher(
 	page_size = size;
 	//UNIV_MEM_ASSERT_RW(src_data, page_size);
 //page 0 is put in the special list
-	if (strstr(fname, "ycsb") == NULL){
-		printf("====> PMEM_DEBUG pm_write file %s offset %zu size %zu\n", fname, offset, size);
-	}
 	if (offset == 0) {
 //TODO: handle meta pages in MongoDB
 		printf("pm_buf_write offset 0 in file %s size %zu\n", fname, size);
@@ -735,11 +738,15 @@ pm_buf_write_with_flusher(
 				if (pspec_block->disk_off == offset && 
 						pspec_block->name_hash == name_hash) {
 					//overwrite this spec block
+					pmemobj_memset_persist(pop, pdata + pspec_block->pmemaddr, 0, pspec_block->max_size); 
 					pmemobj_memcpy_persist(pop, pdata + pspec_block->pmemaddr, src_data, page_size); 
 					//update the file_name, page_id in case of tmp space
 					strcpy(pspec_block->file_name, fname);
 					pspec_block->disk_off = offset;
 					//update size is necessary in WT
+					if( size != pspec_block->size){
+						printf("PMEM_WARN: write on the same offset %zu but differs size old: %zu new: %zu \n", offset, pspec_block->size, size);
+					}
 					pspec_block->size = size;
 
 					pmemobj_rwlock_unlock(pop, &pspec_list->lock);
@@ -761,11 +768,15 @@ pm_buf_write_with_flusher(
 			//add new block to the spec list
 			pspec_block->disk_off = offset;
 			//update size is necessary in WT
+			if( size != pspec_block->size){
+				printf("PMEM_WARN: write on the same offset %zu but differs size old: %zu new: %zu \n", offset, pspec_block->size, size);
+			}
 			pspec_block->size = size;
 
 			pspec_block->state = PMEM_IN_USED_BLOCK;
 			strcpy(pspec_block->file_name, fname);
 			pspec_block->name_hash = name_hash;
+			pmemobj_memset_persist(pop, pdata + pspec_block->pmemaddr, 0, pspec_block->max_size); 
 			pmemobj_memcpy_persist(pop, pdata + pspec_block->pmemaddr, src_data, page_size); 
 			++(pspec_list->cur_pages);
 
@@ -787,8 +798,8 @@ pm_buf_write_with_flusher(
 #else //EVEN_BUCKET
 	//TODO: implement fold() in MongoDB
 	
-	//PMEM_HASH_KEY(hashed, offset, name_hash, pmw->PMEM_N_BUCKETS);
-	hashed = ((offset / 4096) +  (name_hash << 20)) % pmw->PMEM_N_BUCKETS;
+	PMEM_HASH_KEY(hashed, offset, name_hash, pmw->PMEM_N_BUCKETS);
+	//hashed = ((offset / 4096) +  (name_hash << 20)) % pmw->PMEM_N_BUCKETS;
 #endif
 
 retry:
@@ -853,11 +864,15 @@ retry:
 				//overwrite the old page
 				//if(is_lock_free_block)
 				//pmemobj_rwlock_wrlock(pop, &pfree_block->lock);
+				pmemobj_memset_persist(pop, pdata + pfree_block->pmemaddr, 0, pfree_block->max_size); 
 				pmemobj_memcpy_persist(pop, pdata + pfree_block->pmemaddr, src_data, page_size); 
 #if defined (UNIV_PMEMOBJ_BUF_STAT)
 				++buf->bucket_stats[hashed].n_overwrites;
 #endif
 				//update size is necessary in WT
+				if( size != pfree_block->size){
+					printf("PMEM_WARN: overwrite on the same offset %zu but differs size old: %zu new: %zu \n", offset, pfree_block->size, size);
+				}
 				pfree_block->size = size;
 
 				//if(is_lock_free_block)
@@ -903,7 +918,8 @@ retry:
 	assert(pfree_block->state == PMEM_FREE_BLOCK);
 	pfree_block->state = PMEM_IN_USED_BLOCK;
 
-	pmemobj_memcpy_persist(pop, pdata + pfree_block->pmemaddr, src_data, page_size); 
+	pmemobj_memset_persist(pop, pdata + pfree_block->pmemaddr, 0, pfree_block->max_size); 
+	pmemobj_memcpy_persist(pop, pdata + pfree_block->pmemaddr, src_data, size); 
 
 	//if(is_lock_free_block)
 	//pmemobj_rwlock_unlock(pop, &pfree_block->lock);
@@ -1307,6 +1323,7 @@ pm_buf_flush_list(
 		ret = __wt_write(session, fh_cur, pblock->disk_off, pblock->size, buf);
 		if (ret != 0){
 			printf("Inside pm_buf_flush_list(), __wt_write() has errror\n Detail: file %s offset %zu size %zu\n", fh_cur->name, pblock->disk_off, pblock->size);
+			exit(0);
 		}
 
 		//Add the file handler to the list for flushing 
@@ -1754,6 +1771,15 @@ pm_buf_read(
 	//int i;
 	size_t i;
 
+	//currently, we only read blocks from ycsb data
+	if ( strstr(fname, "ycsb") == NULL){
+		return NULL;
+	}
+	if ( pmw->pbuf->page_size < size){
+		printf("YYYY PMEM_WARN: pm read size %zu exceed block size %zu offset %zu file %s \n",
+				size, pmw->pbuf->page_size, offset, fname);
+		return NULL;
+	}
 #if defined(UNIV_PMEMOBJ_BUF_STAT)
 	ulint cur_level = 0;
 #endif
@@ -1791,10 +1817,20 @@ pm_buf_read(
 				pmemobj_rwlock_rdlock(pop, &pspec_block->lock);
 				//found
 				pdata = buf->p_align;
+				if (pspec_block-> size != size){
+					printf("PMEM_ERROR, request size %zu differs with the block size %zu, file %s offset %zu\n",
+							size, pspec_block->size, fname, offset);
+					assert(0);
+				}
 				memcpy(data, pdata + pspec_block->pmemaddr, pspec_block->size); 
-
+					
 				printf("==> PMEM_DEBUG read page 0 (case 1) of file %s\n",
 				pspec_block->file_name);
+				if (pspec_block->size != size) {
+					printf("PMEM_ERROR: read size %zu differs to block size %zu\n",
+							size, pspec_block->size);
+					assert(0);
+				}
 
 				pmemobj_rwlock_unlock(pop, &pspec_block->lock);
 				return pspec_block;
@@ -1846,15 +1882,27 @@ pm_buf_read(
 			if (	D_RO(D_RO(D_RO(cur_list)->arr)[i]) != NULL && 
 					D_RO(D_RO(D_RO(cur_list)->arr)[i])->state != PMEM_FREE_BLOCK &&
 					D_RO(D_RO(D_RO(cur_list)->arr)[i])->disk_off == offset &&
-					D_RO(D_RO(D_RO(cur_list)->arr)[i])->name_hash == name_hash) {
+					D_RO(D_RO(D_RO(cur_list)->arr)[i])->name_hash == name_hash
+					) {
+					//printf("pm read hit, file %s offset %zu size %zu\n", fname, offset, size);
 				pblock = D_RW(D_RW(D_RW(cur_list)->arr)[i]);
 				//if(is_lock_on_read)
 				pmemobj_rwlock_rdlock(pop, &pblock->lock);
 				
 				pdata = buf->p_align;
 
+				if (pblock-> size != size){
+					printf("PMEM_ERROR, request size %zu differs with the block size %zu, file %s offset %zu\n",
+							size, pblock->size, fname, offset);
+					assert(0);
+				}
 				memcpy(data, pdata + pblock->pmemaddr, pblock->size); 
 				//bytes_read = pblock->size.physical();
+				if (pblock->size != size) {
+					printf("PMEM_ERROR: read size %zu differs to block size %zu\n",
+							size, pblock->size);
+					assert(0);
+				}
 #if defined (UNIV_PMEMOBJ_DEBUG)
 				//assert( pm_check_io(pdata + pblock->pmemaddr, pblock->id) ) ;
 #endif

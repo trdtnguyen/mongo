@@ -1174,6 +1174,11 @@ __wt_block_extlist_read(WT_SESSION_IMPL *session,
 	if (el->offset == WT_BLOCK_INVALID_OFFSET)
 		return (0);
 
+#if defined(UNIV_PMEMOBJ_BUF)
+	printf("read el %s of file %s offset %zu size %zu\n",
+			el->name, block->fh->name, el->offset, (size_t)el->size);
+#endif //defined(UNIV_PMEMOBJ_BUF)
+
 	WT_RET(__wt_scr_alloc(session, el->size, &tmp));
 	WT_ERR(__wt_block_read_off(
 	    session, block, tmp, el->offset, el->size, el->checksum));
@@ -1251,6 +1256,10 @@ __wt_block_extlist_write(WT_SESSION_IMPL *session,
 	uint32_t entries;
 	uint8_t *p;
 
+#if defined(UNIV_PMEMOBJ_BUF)
+	printf("BEGIN write el %s of file %s offset %zu size %zu\n",
+			el->name, block->fh->name, el->offset, (size_t)el->size);
+#endif //defined(UNIV_PMEMOBJ_BUF)
 	WT_RET(__block_extlist_dump(session, block, el, "write"));
 
 	/*
@@ -1312,6 +1321,10 @@ __wt_block_extlist_write(WT_SESSION_IMPL *session,
 #endif
 
 	/* Write the extent list to disk. */
+#if defined(UNIV_PMEMOBJ_BUF)
+	printf("write el %s of file %s offset %zu size %zu\n",
+			el->name, block->fh->name, el->offset, (size_t)el->size);
+#endif //defined(UNIV_PMEMOBJ_BUF)
 	WT_ERR(__wt_block_write_off(session, block,
 	    tmp, &el->offset, &el->size, &el->checksum, true, true, true));
 

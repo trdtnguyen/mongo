@@ -794,8 +794,7 @@ hash_f1(
 
 /*Evenly distributed map that one space_id evenly distribute across buckets*/
 #define PMEM_HASH_KEY(hashed, key1, key2, n) do {\
-	hashed = (key1 + (key2 % n));\
-	hashed = hashed % n;\
+	hashed = ((key2 / 4096) +  (key1 << 20)) % n;\
 }while(0)
 
 #define FOLD(out, a, b) do {\

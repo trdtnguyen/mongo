@@ -469,6 +469,10 @@ __ckpt_process(WT_SESSION_IMPL *session, WT_BLOCK *block, WT_CKPT *ckptbase)
 	    session, &ci->ckpt_avail, "live", "ckpt_avail", true));
 	__wt_block_extlist_free(session, &ci->ckpt_alloc);
 	__wt_block_extlist_free(session, &ci->ckpt_discard);
+//tdnguyen debug
+	if ( strstr(block->name, "ycsb") != NULL){
+		printf("checkpoint for data ....\n");
+	}
 
 	/*
 	 * To delete a checkpoint, we'll need checkpoint information for it and
