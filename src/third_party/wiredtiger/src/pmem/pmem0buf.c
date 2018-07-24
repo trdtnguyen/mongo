@@ -2237,6 +2237,7 @@ WT_RET(__wt_cond_alloc(session, "flusher_is_all_finished", &flusher->is_all_fini
 	//flusher->is_all_closed = os_event_create("flusher_is_all_closed");
 WT_RET(__wt_cond_alloc(session, "flusher_is_all_closed", &flusher->is_all_closed_cond));
 	flusher->size = size;
+	flusher->n_workers = 0;
 	flusher->tail = 0;
 	flusher->n_requested = 0;
 	flusher->is_running = false;
@@ -2283,7 +2284,7 @@ pm_buf_flusher_close(
 	int ret = 0;
 
 	WT_SESSION_IMPL *session;
-	WT_SESSION *wt_session;
+	//WT_SESSION *wt_session;
 	PMEM_BUF*	buf;
 	PMEM_FLUSHER* flusher;
 	ulint i;
@@ -2297,7 +2298,8 @@ pm_buf_flusher_close(
 	//wait for all workers finish their work
 	while (flusher->n_workers > 0) {
 		//os_thread_sleep(10000);
-		__wt_sleep(0, 10000);
+		__wt_cond_signal(session,flusher->is_req_not_empty_cond);
+		__wt_sleep(0, 1000);
 	}
 	
 	for (i = 0; i < flusher->size; i++) {
@@ -2316,13 +2318,13 @@ pm_buf_flusher_close(
 		WT_TRET(__wt_thread_join(session, flusher->worker_tids[i]));
 	}
 	//close the worker thread sessions
-	for (i = 0; i < buf->flusher->size; i++) {
-		if (flusher->worker_sessions[i] != NULL) {
-			wt_session = &flusher->worker_sessions[i]->iface;
-			WT_TRET(wt_session->close(wt_session, NULL));
-			flusher->worker_sessions[i] = NULL;
-		}
-	}
+	//for (i = 0; i < buf->flusher->size; i++) {
+	//	if (flusher->worker_sessions[i] != NULL) {
+	//		wt_session = &flusher->worker_sessions[i]->iface;
+	//		WT_TRET(wt_session->close(wt_session, NULL));
+	//		flusher->worker_sessions[i] = NULL;
+	//	}
+	//}
 
 	free(flusher->worker_tids);
 	free(flusher->worker_sessions);

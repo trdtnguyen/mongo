@@ -1812,7 +1812,7 @@ __conn_single(WT_SESSION_IMPL *session, const char *cfg[])
 //				WT_ERR(__wt_write(session, fh, (wt_off_t)0, len, buf));
 //			}
 //#else //original
-//		WT_ERR(__wt_write(session, fh, (wt_off_t)0, len, buf));
+		WT_ERR(__wt_write(session, fh, (wt_off_t)0, len, buf));
 //#endif //defined (UNIV_PMEMOBJ_BUF)
 		WT_ERR(__wt_fsync(session, fh, true));
 	} else {
@@ -2706,8 +2706,6 @@ wiredtiger_open(const char *home, WT_EVENT_HANDLER *event_handler,
 	} else
 		WT_ERR_NOTFOUND_OK(ret);
 
-
-
 	//(2)Create PMEMOBJ
 	sprintf(PMEM_FILE_PATH, "%s/%s","/mnt/pmem1", PMEMOBJ_FILE_NAME);
 	//create new pmemobj or open the existed one
@@ -2847,9 +2845,6 @@ wiredtiger_open(const char *home, WT_EVENT_HANDLER *event_handler,
 
 	/* Start the worker threads and run recovery. */
 	WT_ERR(__wt_connection_workers(session, cfg));
-
-#if defined (UNIV_PMEMOBJ_BUF)
-#endif //if defined (UNIV_PMEMOBJ_BUF)
 
 	WT_STATIC_ASSERT(offsetof(WT_CONNECTION_IMPL, iface) == 0);
 	*connectionp = &conn->iface;

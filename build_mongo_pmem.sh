@@ -2,6 +2,7 @@
 
 MONGO_HOME=/home/vldb/mongo-pmem
 
+#IS_DEBUG=0
 IS_DEBUG=1
 
 BUILD_NAME=
