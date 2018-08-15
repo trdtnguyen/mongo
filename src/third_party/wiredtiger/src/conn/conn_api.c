@@ -2785,12 +2785,12 @@ wiredtiger_open(const char *home, WT_EVENT_HANDLER *event_handler,
 
 	//(3) init PM, create flusher threads inside pm_wrapper_buf_alloc_or_open()
 	ret  = pm_wrapper_buf_alloc_or_open(gb_pmw, buf_size, 32*1024);
+	printf("After pm_wrapper_buf_alloc_or_open() ret %d\n", ret);
+
 	if (ret != PMEM_SUCCESS) {
 		printf("pm_wrapper_buf_alloc_or_open() has errrors inside wiredtiger_open()\n");
 		exit(0);
 	}
-
-
 #endif //if defined (UNIV_PMEMOBJ_BUF)
 	/*
 	 * Load the extensions after initialization completes; extensions expect
@@ -2843,9 +2843,15 @@ wiredtiger_open(const char *home, WT_EVENT_HANDLER *event_handler,
 
 	WT_ERR(__wt_metadata_cursor(session, NULL));
 
+#if defined (UNIV_PMEMOBJ_BUF)
+	printf("BEGIN call __wt_connection_workers()\n");
+#endif
 	/* Start the worker threads and run recovery. */
 	WT_ERR(__wt_connection_workers(session, cfg));
 
+#if defined (UNIV_PMEMOBJ_BUF)
+	printf("END call __wt_connection_workers()\n");
+#endif
 	WT_STATIC_ASSERT(offsetof(WT_CONNECTION_IMPL, iface) == 0);
 	*connectionp = &conn->iface;
 

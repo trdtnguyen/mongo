@@ -2,8 +2,8 @@
 
 MONGO_HOME=/home/vldb/mongo-pmem
 
-#IS_DEBUG=0
-IS_DEBUG=1
+IS_DEBUG=0
+#IS_DEBUG=1
 
 BUILD_NAME=
 #BUILD_FLAGS="-Imongo/db/pmem/ -DUNIV_PMEMOBJ_BUF"
@@ -16,14 +16,14 @@ cd $MONGO_HOME
 #python2 buildscripts/scons.py mongod --dbg=on --opt=off -j 40 LIBS='pmem pmemobj' CXXFLAGS='-g' --prefix=${MONGO_HOME}
 
 if [ $IS_DEBUG -eq 0 ]; then
-python2 buildscripts/scons.py mongod -j 40 LIBS='pmem pmemobj' CXXFLAGS='-g' --prefix=${MONGO_HOME}
+python2 buildscripts/scons.py mongod -j 40 LIBS='pmem pmemobj aio' CXXFLAGS='-g' --prefix=${MONGO_HOME}
 
 cp build/opt/mongo/mongod .
 cp build/opt/mongo/mongo .
 cp build/opt/mongo/mongos .
 else
 echo "Build the Debug mode"
-python2 buildscripts/scons.py mongod --dbg=on --opt=off -j 40 LIBS='pmem pmemobj' CXXFLAGS='-g' --prefix=${MONGO_HOME}
+python2 buildscripts/scons.py mongod --dbg=on --opt=off -j 40 LIBS='pmem pmemobj aio' CXXFLAGS='-g' --prefix=${MONGO_HOME}
 
 cp build/debug/mongo/mongod .
 cp build/debug/mongo/mongo .

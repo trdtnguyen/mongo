@@ -3101,6 +3101,7 @@ def doConfigure(myenv):
 			#Remove below lines for building the original WT
             "UNIV_PMEMOBJ_BUF",
 			#"UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG",
+			"O_DIRECT",
         ]
     )
 #    conf.env.Append(

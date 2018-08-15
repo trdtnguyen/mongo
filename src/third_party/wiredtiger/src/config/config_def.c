@@ -172,6 +172,9 @@ static const WT_CONFIG_CHECK confchk_WT_CONNECTION_reconfigure[] = {
 	{ "compatibility", "category",
 	    NULL, NULL,
 	    confchk_WT_CONNECTION_reconfigure_compatibility_subconfigs, 1 },
+	{ "direct_io", "list",
+	    NULL, "choices=[\"checkpoint\",\"data\",\"log\"]",
+	    NULL, 0 },
 	{ "error_prefix", "string", NULL, NULL, NULL, 0 },
 	{ "eviction", "category",
 	    NULL, NULL,
@@ -1293,11 +1296,11 @@ static const WT_CONFIG_ENTRY config_entries[] = {
 	{ "WT_CONNECTION.reconfigure",
 	  "async=(enabled=false,ops_max=1024,threads=2),cache_overhead=8,"
 	  "cache_size=100MB,checkpoint=(log_size=0,wait=0),"
-	  "compatibility=(release=),error_prefix=,eviction=(threads_max=8,"
-	  "threads_min=1),eviction_checkpoint_target=5,"
-	  "eviction_dirty_target=5,eviction_dirty_trigger=20,"
-	  "eviction_target=80,eviction_trigger=95,"
-	  "file_manager=(close_handle_minimum=250,close_idle_time=30,"
+	  "compatibility=(release=),direct_io=[data],error_prefix=,"
+	  "eviction=(threads_max=8,threads_min=1),"
+	  "eviction_checkpoint_target=5,eviction_dirty_target=5,"
+	  "eviction_dirty_trigger=20,eviction_target=80,eviction_trigger=95"
+	  ",file_manager=(close_handle_minimum=250,close_idle_time=30,"
 	  "close_scan_interval=10),log=(archive=true,prealloc=true,"
 	  "zero_fill=false),lsm_manager=(merge=true,worker_thread_max=4),"
 	  "lsm_merge=true,operation_tracking=(enabled=false,path=\".\"),"
@@ -1309,7 +1312,7 @@ static const WT_CONFIG_ENTRY config_entries[] = {
 	  "statistics=none,statistics_log=(json=false,on_close=false,"
 	  "sources=,timestamp=\"%b %d %H:%M:%S\",wait=0),"
 	  "timing_stress_for_test=,verbose=",
-	  confchk_WT_CONNECTION_reconfigure, 23
+	  confchk_WT_CONNECTION_reconfigure, 24
 	},
 	{ "WT_CONNECTION.rollback_to_stable",
 	  "",
@@ -1537,7 +1540,7 @@ static const WT_CONFIG_ENTRY config_entries[] = {
 	  ",builtin_extension_config=,cache_cursors=true,cache_overhead=8,"
 	  "cache_size=100MB,checkpoint=(log_size=0,wait=0),"
 	  "checkpoint_sync=true,compatibility=(release=,require_max=,"
-	  "require_min=),config_base=true,create=false,direct_io=,"
+	  "require_min=),config_base=true,create=false,direct_io=[data],"
 	  "encryption=(keyid=,name=,secretkey=),error_prefix=,"
 	  "eviction=(threads_max=8,threads_min=1),"
 	  "eviction_checkpoint_target=5,eviction_dirty_target=5,"
@@ -1567,7 +1570,7 @@ static const WT_CONFIG_ENTRY config_entries[] = {
 	  ",builtin_extension_config=,cache_cursors=true,cache_overhead=8,"
 	  "cache_size=100MB,checkpoint=(log_size=0,wait=0),"
 	  "checkpoint_sync=true,compatibility=(release=,require_max=,"
-	  "require_min=),config_base=true,create=false,direct_io=,"
+	  "require_min=),config_base=true,create=false,direct_io=[data],"
 	  "encryption=(keyid=,name=,secretkey=),error_prefix=,"
 	  "eviction=(threads_max=8,threads_min=1),"
 	  "eviction_checkpoint_target=5,eviction_dirty_target=5,"
@@ -1597,9 +1600,9 @@ static const WT_CONFIG_ENTRY config_entries[] = {
 	  ",builtin_extension_config=,cache_cursors=true,cache_overhead=8,"
 	  "cache_size=100MB,checkpoint=(log_size=0,wait=0),"
 	  "checkpoint_sync=true,compatibility=(release=,require_max=,"
-	  "require_min=),direct_io=,encryption=(keyid=,name=,secretkey=),"
-	  "error_prefix=,eviction=(threads_max=8,threads_min=1),"
-	  "eviction_checkpoint_target=5,eviction_dirty_target=5,"
+	  "require_min=),direct_io=[data],encryption=(keyid=,name=,"
+	  "secretkey=),error_prefix=,eviction=(threads_max=8,threads_min=1)"
+	  ",eviction_checkpoint_target=5,eviction_dirty_target=5,"
 	  "eviction_dirty_trigger=20,eviction_target=80,eviction_trigger=95"
 	  ",extensions=,file_extend=,file_manager=(close_handle_minimum=250"
 	  ",close_idle_time=30,close_scan_interval=10),hazard_max=1000,"
@@ -1624,9 +1627,9 @@ static const WT_CONFIG_ENTRY config_entries[] = {
 	  ",builtin_extension_config=,cache_cursors=true,cache_overhead=8,"
 	  "cache_size=100MB,checkpoint=(log_size=0,wait=0),"
 	  "checkpoint_sync=true,compatibility=(release=,require_max=,"
-	  "require_min=),direct_io=,encryption=(keyid=,name=,secretkey=),"
-	  "error_prefix=,eviction=(threads_max=8,threads_min=1),"
-	  "eviction_checkpoint_target=5,eviction_dirty_target=5,"
+	  "require_min=),direct_io=[data],encryption=(keyid=,name=,"
+	  "secretkey=),error_prefix=,eviction=(threads_max=8,threads_min=1)"
+	  ",eviction_checkpoint_target=5,eviction_dirty_target=5,"
 	  "eviction_dirty_trigger=20,eviction_target=80,eviction_trigger=95"
 	  ",extensions=,file_extend=,file_manager=(close_handle_minimum=250"
 	  ",close_idle_time=30,close_scan_interval=10),hazard_max=1000,"

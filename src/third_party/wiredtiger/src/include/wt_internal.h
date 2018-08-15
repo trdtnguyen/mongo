@@ -403,6 +403,7 @@ union __wt_rand_state;
 //#include <libpmemobj.h>
 //#include "my_pmem_common.h"
 #include "my_pmemobj.h"
+#include "os0file.h"
 #endif
 
 #if defined(__cplusplus)

@@ -4,6 +4,7 @@
 #tdn add
 src/pmem/pmem0buf.c
 src/pmem/pmem0wrapper.c
+src/os_posix/os_my_aio.c
 #end tdn add
 src/async/async_api.c
 src/async/async_op.c

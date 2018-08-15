@@ -151,6 +151,7 @@ struct __wt_connection_impl {
 	WT_CONNECTION iface;
 #if defined(UNIV_PMEMOBJ_BUF)
 	void* pmw;
+	void* aio;
 #endif
 	/* For operations without an application-supplied session */
 	WT_SESSION_IMPL *default_session;

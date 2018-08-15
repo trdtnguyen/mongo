@@ -175,6 +175,9 @@ typedef struct __pmem_list_cleaner PMEM_LIST_CLEANER;
 struct __pmem_flusher;
 typedef struct __pmem_flusher PMEM_FLUSHER;
 
+struct __flusher_thread_param;
+typedef struct __flusher_thread_param FLUSHER_THREAD_PARAM;
+
 struct __pmem_buf_bucket_stat;
 typedef struct __pmem_buf_bucket_stat PMEM_BUCKET_STAT;
 
@@ -186,6 +189,7 @@ typedef struct __pmem_file_map PMEM_FILE_MAP;
 
 struct __pmem_sort_obj;
 typedef struct __pmem_sort_obj PMEM_SORT_OBJ;
+
 
 //Do not use this struct until the research finish
 struct __pmem_aio_param;
@@ -247,6 +251,7 @@ struct __pmem_wrapper {
 	//	+ assign this value when the server start.
 	//  + reset this value to NULL when the server shutdown
 	WT_SESSION_IMPL* session;
+	void* aio;
 };
 /* FUNCTIONS*/
 PMEM_WRAPPER* 
@@ -564,16 +569,6 @@ pm_buf_write_with_flusher(
 		   	size_t			size,
 		   	byte*			src_data);
 
-int
-pm_buf_write_with_flusher_append(
-		   	PMEM_WRAPPER*	pmw,
-		   	char*			fname,
-		   	uint64_t		name_hash,
-		   	off_t			offset,
-		   	size_t			size,
-		   	byte*			src_data);
-
-
 
 const PMEM_BUF_BLOCK*
 pm_buf_read(
@@ -630,7 +625,9 @@ struct __pmem_flusher {
 	//TODO: find the ib_mutex_t mapping in MongoDB
 	//ib_mutex_t			mutex;
 	WT_SPINLOCK		flusher_lock;
+	WT_SPINLOCK*		flusher_arr_locks;
 	WT_CONDVAR*			is_req_not_empty_cond; //signaled when there is a new flushing list added
+	WT_CONDVAR**			flusher_conds; //signaled when there is a new flushing list added
 	WT_CONDVAR*			is_req_full_cond;
 
 	WT_CONDVAR*			is_all_finished_cond; //signaled when all workers are finished flushing and no pending request 
@@ -649,6 +646,12 @@ struct __pmem_flusher {
 	bool is_running;
 
 	PMEM_BUF_BLOCK_LIST** flush_list_arr;
+	bool*	flush_list_flag_arr;
+};
+
+struct __flusher_thread_param {
+	PMEM_WRAPPER* pmw;
+	ulint flusher_idx;
 };
 int
 pm_flusher_init(
@@ -791,10 +794,11 @@ hash_f1(
 }while (0)
 
 //hashed = ((key2 << 20) + key1 + key2) ^ PMEM_HASH_MASK
+//hashed = ((key2 / 4096) +  (key1 << 20)) % n
 
 /*Evenly distributed map that one space_id evenly distribute across buckets*/
 #define PMEM_HASH_KEY(hashed, key1, key2, n) do {\
-	hashed = ((key2 / 4096) +  (key1 << 20)) % n;\
+	hashed = ((key2  +  key1 ) / 4096) % n;\
 }while(0)
 
 #define FOLD(out, a, b) do {\

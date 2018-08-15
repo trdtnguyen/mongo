@@ -215,8 +215,15 @@ __wt_connection_workers(WT_SESSION_IMPL *session, const char *cfg[])
 	 * other optional threads can know if statistics are enabled or not.
 	 */
 	WT_RET(__wt_statlog_create(session, cfg));
+#if defined (UNIV_PMEMOBJ_BUF)
+	printf("BEGIN __wt_logmgr_create()\n");
+#endif
 	WT_RET(__wt_logmgr_create(session, cfg));
 
+#if defined (UNIV_PMEMOBJ_BUF)
+	printf("END __wt_logmgr_create()\n");
+	printf("BEGIN __wt_txn_recover()\n");
+#endif
 	/*
 	 * Run recovery.
 	 * NOTE: This call will start (and stop) eviction if recovery is
@@ -226,6 +233,9 @@ __wt_connection_workers(WT_SESSION_IMPL *session, const char *cfg[])
 	 */
 	WT_RET(__wt_txn_recover(session));
 
+#if defined (UNIV_PMEMOBJ_BUF)
+	printf("END __wt_txn_recover()\n");
+#endif
 	/*
 	 * Start the optional logging/archive threads.
 	 * NOTE: The log manager must be started before checkpoints so that the
@@ -252,7 +262,6 @@ __wt_connection_workers(WT_SESSION_IMPL *session, const char *cfg[])
 
 	/* Start the optional async threads. */
 	WT_RET(__wt_async_create(session, cfg));
-
 	/* Start the optional checkpoint thread. */
 	WT_RET(__wt_checkpoint_server_create(session, cfg));
 
