@@ -338,8 +338,22 @@ __block_write_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 
 	/* Write the block. */
 #if defined (UNIV_PMEMOBJ_BUF)
+	int direct_io_check = (offset % conn->buffer_alignment) == 0;
+	if (!direct_io_check){
+		printf("write file %s offset %zu size %zu, has OFFSET not aligned with buffer_alignment %zu for direct_io\n",
+				fh->name, offset, align_size, conn->buffer_alignment);
+		exit(0);
+
+		direct_io_check = (align_size % conn->buffer_alignment) == 0;
+		printf("write file %s offset %zu size %zu, has SIZE not aligned with buffer_alignment %zu for direct_io\n",
+				fh->name, offset, align_size, conn->buffer_alignment);
+		exit(0);
+	}
+
+
 	//Capture this write in our PMEM_BUF
-	ret = pm_buf_write_with_flusher(conn->pmw, fh->name, fh->name_hash, offset, align_size, buf->mem);
+	ret = pm_buf_write_with_flusher(conn->pmw, fh->name, fh->name_hash, offset, checksum, align_size, buf->mem);
+	//ret = pm_buf_write_with_flusher_append(conn->pmw, fh->name, fh->name_hash, offset, checksum, align_size, buf->mem);
 	if (ret != PMEM_SUCCESS){
 		//The original
 		if ((ret =

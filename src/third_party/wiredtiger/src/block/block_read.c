@@ -7,7 +7,9 @@
  */
 
 #include "wt_internal.h"
-
+#if defined (UNIV_PMEMOBJ_BUF)
+#include <assert.h>
+#endif
 /*
  * __wt_bm_preload --
  *	Pre-load a page.
@@ -203,7 +205,8 @@ __wt_block_read_off_blind(
 	WT_RET(__wt_buf_init(session, buf, block->allocsize));
 #if defined (UNIV_PMEMOBJ_BUF)
 	const PMEM_BUF_BLOCK* pblock =
-		pm_buf_read(conn->pmw, block->fh->name, block->fh->name_hash, offset, block->allocsize, buf->mem);
+		//pm_buf_read(conn->pmw, block->fh->name, block->fh->name_hash, offset, block->allocsize, buf->mem);
+		pm_buf_read_append(conn->pmw, block->fh->name, block->fh->name_hash, offset, block->allocsize, buf->mem);
 	if (pblock == NULL){
 		WT_RET(__wt_read(session, block->fh, offset, (size_t)block->allocsize, buf->mem));
 	}
@@ -244,6 +247,8 @@ __wt_block_read_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 #if defined (UNIV_PMEMOBJ_BUF)
 	WT_CONNECTION_IMPL *conn;
 	conn = S2C(session);
+
+	page_checksum = 7;
 #endif //if defined (UNIV_PMEMOBJ_BUF)
 	__wt_verbose(session, WT_VERB_READ,
 	    "off %" PRIuMAX ", size %" PRIu32 ", checksum %" PRIu32,
@@ -271,7 +276,8 @@ __wt_block_read_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 #if defined(UNIV_PMEMOBJ_BUF)
 	//skip read metadata file
 	const PMEM_BUF_BLOCK* pblock =
-		pm_buf_read(conn->pmw, block->fh->name, block->fh->name_hash, offset, size, buf->mem);
+		pm_buf_read(conn->pmw, block->fh->name, block->fh->name_hash, checksum, offset, size, buf->mem);
+		//pm_buf_read_append(conn->pmw, block->fh->name, block->fh->name_hash, offset, size, buf->mem);
 	//if (strstr(block->fh->name, "ycsb") != NULL && pblock!=NULL )
 	//	printf("pm_buf_read file %s offset %zu size %zu result %d\n", block->fh->name, offset, (size_t)size, (pblock!=NULL));
 	if (pblock == NULL){
@@ -302,7 +308,14 @@ __wt_block_read_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 			__wt_page_header_byteswap(buf->mem);
 			return (0);
 		}
-
+#if defined (UNIV_PMEMOBJ_BUF)
+		printf(	"DAT __wt_block_read_off() ERROR#1 read file %s checksum error for %"PRIu32"" 
+				"B block at offset %zu calculated block checksum of %"PRIu32""
+				"doesn't match expected checksum of %"PRIu32" pm_read is OK? %d\n",
+			    block->fh->name, size, (uintmax_t)offset, page_checksum, checksum, (pblock!=NULL));
+		assert(0);
+		return PMEM_ERROR;
+#endif
 		if (!F_ISSET(session, WT_SESSION_QUIET_CORRUPT_FILE))
 			__wt_errx(session,
 			    "read checksum error for %" PRIu32 "B block at "
@@ -323,8 +336,15 @@ __wt_block_read_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 		WT_IGNORE_RET(
 		    __wt_bm_corrupt_dump(session, buf, offset, size, checksum));
 
+#if defined (UNIV_PMEMOBJ_BUF)
+		printf(	"DAT __wt_block_read_off() ERROR#2 read file %s checksum error, size %" PRIu32 " offset %zu. calculated swap.checksum %" PRIu32 " doesn't match expected checksum of %" PRIu32" pm_read is OK? %d \n",
+			    block->fh->name, size, (uintmax_t)offset, swap.checksum, checksum, (pblock!=NULL));
+		assert(0);
+		return PMEM_ERROR;
+#else
 	/* Panic if a checksum fails during an ordinary read. */
 	return (block->verify ||
 	    F_ISSET(session, WT_SESSION_QUIET_CORRUPT_FILE) ?
 	    WT_ERROR : __wt_illegal_value(session, block->name));
+#endif
 }

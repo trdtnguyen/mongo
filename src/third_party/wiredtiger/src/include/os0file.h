@@ -108,6 +108,7 @@ struct __aio {
 	WT_SESSION_IMPL** worker_sessions; //array of internal session
 	wt_thread_t*        worker_tids; //array of worker thread ids
 	WT_CONDVAR*         is_aio_req_cond;
+	WT_CONDVAR*         all_aio_closed_cond;
 	WT_CONDVAR**         aio_req_conds;
 	WT_SPINLOCK* seg_locks; //one lock per seg
 

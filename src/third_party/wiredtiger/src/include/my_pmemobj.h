@@ -447,7 +447,8 @@ struct __pmem_buf {
 	//TODO: find the mapping os_event_t in MongoDB
 	//os_event_t*  flush_events; //N flush events for N buckets
 	//os_event_t free_pool_event; //event for free_pool
-	WT_CONDVAR**  flush_conds; //N flush events for N buckets
+	WT_CONDVAR**  bucket_flush_conds; //N flush events for N buckets
+	WT_CONDVAR**  prev_list_flush_conds; //cond per each bucket, if two list with the same hashed id are propagating concurrency, the new one must wait for the older finish 
 	WT_CONDVAR* free_pool_cond; //event for free_pool
 	
 
@@ -566,12 +567,34 @@ pm_buf_write_with_flusher(
 			const char*		fname,
 		   	uint64_t		name_hash,
 		   	off_t			offset,
+		   	uint32_t		checksum,
+		   	size_t			size,
+		   	byte*			src_data);
+
+int
+pm_buf_write_with_flusher_append(
+		   	PMEM_WRAPPER*	pmw,
+			const char*		fname,
+		   	uint64_t		name_hash,
+		   	off_t			offset,
+		   	uint32_t		checksum,
 		   	size_t			size,
 		   	byte*			src_data);
 
 
 const PMEM_BUF_BLOCK*
 pm_buf_read(
+		   	PMEM_WRAPPER*	pmw,
+			const char*		fname,
+			uint64_t		name_hash,
+		   	const off_t		offset,
+		   	uint32_t		checksum,
+		   	const size_t	size,
+		   	byte*			data
+		   );
+
+const PMEM_BUF_BLOCK*
+pm_buf_read_append(
 		   	PMEM_WRAPPER*	pmw,
 			const char*		fname,
 			uint64_t		name_hash,

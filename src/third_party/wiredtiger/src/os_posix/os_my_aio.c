@@ -50,6 +50,7 @@ AIO* AIO_init(PMEM_WRAPPER* pmw,
 
 	ret = __wt_cond_alloc(session,"aio not full", &aio->not_full_cond);
 	ret = __wt_cond_alloc(session,"is aio req", &aio->is_aio_req_cond);
+	ret = __wt_cond_alloc(session,"all aio closed", &aio->all_aio_closed_cond);
     
 
 	aio->n_seg_reserved = 0;
@@ -143,6 +144,7 @@ AIO* AIO_init(PMEM_WRAPPER* pmw,
 		ret = __wt_thread_create(session, &aio->worker_tids[i],
 		    pm_aio_worker, pmw);
 	}
+    
 
 	printf("======>   END start %zu AIO threads\n", n_segments);
 	return aio;	
@@ -155,12 +157,23 @@ void AIO_destroy(WT_SESSION_IMPL* session,
 
 	ulint i;
     int ret;
+
+    aio->is_running = false;
+
+    for (i = 0; i < aio->n_segs; ++i){
+        __wt_cond_signal(aio->worker_sessions[i],
+                    aio->aio_req_conds[i]);
+    }
+    __wt_cond_wait(session, aio->all_aio_closed_cond, 0, NULL);
+
+    printf("All AIO workers are closed, release the resource\n");    
 	// (1) Events, locks
 	 free(aio->events);
 
 	 __wt_spin_destroy(session, &aio->aio_lock);
 	 __wt_cond_destroy(session, &aio->not_full_cond);
 	 __wt_cond_destroy(session, &aio->is_aio_req_cond);
+	 __wt_cond_destroy(session, &aio->all_aio_closed_cond);
 
 	//(2) Segments
 	for (i = 0; i < aio->n_segs; ++i) {
@@ -261,6 +274,8 @@ pm_process_batch(
 	//ulint		slots_per_seg;
 	ulint		n_seg_need;
 
+    PMEM_BUF_BLOCK_LIST* pnext_list;
+
 	AIO* aio = (AIO*) pmw->aio;
 	WT_SESSION_IMPL* session = pmw->session;
 	//WT_SESSION_IMPL* worker_session;
@@ -281,6 +296,23 @@ pm_process_batch(
 check_seg:
 	for (;;) {
 
+    /////////////////////////////////////////
+    //IMPORTANT NOTE: wait until its next list (the older) finish propagating to ensure write in order
+    /////////////////////////////////////////////
+        pnext_list = D_RW(plist->next_list);
+        if (pnext_list != NULL){
+            int hashed = plist->hashed_id;
+            assert(hashed == pnext_list->hashed_id);
+
+            printf("[3] NNNN plist %zu wait until the previous list %zu finish flushing, pnext_list->is_flush = %d...\n", plist->list_id, pnext_list->list_id, pnext_list->is_flush);
+           
+		__wt_cond_wait(session, pmw->pbuf->prev_list_flush_conds[hashed], 0, NULL);
+
+            printf("[3] NNNN plist %zu WAKEUP from the previous list \n", plist->list_id);
+           goto check_seg; 
+        } 
+
+
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
     printf("[3] plist %zu try to acquire aio_lock, reserved_segs %zu / total segs %zu... \n", plist->list_id, aio->n_seg_reserved, aio->n_segs);
 #endif
@@ -299,7 +331,9 @@ check_seg:
 	   //     __wt_spin_unlock(session, &aio->aio_lock);
 		__wt_spin_unlock(session, &aio->aio_lock);
 
+#if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
         printf("\t[3] plist %zu wait in pm_process_batch().... Detail: reserved segs %zu + n_segs need %zu >= the total segs %zu\n", plist->list_id, aio->n_seg_reserved, n_seg_need, aio->n_segs);
+#endif
 		__wt_cond_wait(session, aio->not_full_cond, 0, NULL);
 	} //end for
 
@@ -686,16 +720,15 @@ static void* pm_aio_worker (void* arg) {
                     printf("[4.3] aio worker %zu goto wait again.\n", seg_idx);
 #endif        
             if (!aio->is_running){
-                break;
+                break; //shutdown
             }
         }// end the thread for loop
 
-        //lock_ret = __wt_spin_trylock(worker_session, &aio->aio_lock);
-        //__wt_spin_lock(worker_session, &aio->aio_lock);
         __wt_spin_lock(session, &aio->aio_lock);
         aio->n_workers--;
         if (aio->n_workers == 0){
             printf("PMEM_INFO: close the last aio worker thread \n");
+            __wt_cond_signal(session, aio->all_aio_closed_cond);
         }
         //if (lock_ret == 0)
         //__wt_spin_unlock(worker_session, &aio->aio_lock);

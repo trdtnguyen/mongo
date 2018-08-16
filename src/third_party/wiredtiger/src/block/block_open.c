@@ -310,7 +310,8 @@ __wt_desc_write(WT_SESSION_IMPL *session, WT_FH *fh, uint32_t allocsize)
 
 #if defined (UNIV_PMEMOBJ_BUF)
 	printf("write metadata for file %s offset 0 size %zu\n", fh->name, (size_t)allocsize);
-	ret = pm_buf_write_with_flusher(conn->pmw, fh->name, fh->name_hash, (off_t)0, (size_t)allocsize, (byte*)desc);
+	ret = pm_buf_write_with_flusher(conn->pmw, fh->name, fh->name_hash, (off_t)0, desc->checksum, (size_t)allocsize, (byte*)desc);
+	//ret = pm_buf_write_with_flusher_append(conn->pmw, fh->name, fh->name_hash, (off_t)0, desc->checksum, (size_t)allocsize, (byte*)desc);
 
 	if (ret != PMEM_SUCCESS){
 		printf("Inside __wt_desc_write(), pm_buf_write() has error! Use the original __wt_write()\n");
@@ -350,7 +351,8 @@ __desc_read(WT_SESSION_IMPL *session, WT_BLOCK *block)
 	/* Read the first allocation-sized block and verify the file format. */
 #if defined (UNIV_PMEMOBJ_BUF)
 	const PMEM_BUF_BLOCK* pblock =
-		pm_buf_read(conn->pmw, block->fh->name, block->fh->name_hash, (off_t)0, (size_t)block->allocsize, buf->mem);
+		pm_buf_read(conn->pmw, block->fh->name, block->fh->name_hash, (off_t)0, 0, (size_t)block->allocsize, buf->mem);
+		//pm_buf_read_append(conn->pmw, block->fh->name, block->fh->name_hash, (off_t)0, (size_t)block->allocsize, buf->mem);
 	if (strstr(block->fh->name,"ycsb") != NULL)
 		printf("Inside __desc_read, pm_buf_read file %s offset 0 size %zu result %d\n",
 				block->fh->name, (size_t)block->allocsize, (pblock!=NULL));
