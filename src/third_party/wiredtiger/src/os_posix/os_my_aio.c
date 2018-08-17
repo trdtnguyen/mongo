@@ -50,6 +50,7 @@ AIO* AIO_init(PMEM_WRAPPER* pmw,
 
 	ret = __wt_cond_alloc(session,"aio not full", &aio->not_full_cond);
 	ret = __wt_cond_alloc(session,"is aio req", &aio->is_aio_req_cond);
+	ret = __wt_cond_alloc(session,"all aio closed", &aio->all_aio_closed_cond);
     
 
 	aio->n_seg_reserved = 0;
@@ -155,12 +156,28 @@ void AIO_destroy(WT_SESSION_IMPL* session,
 
 	ulint i;
     int ret;
+	
+    __wt_spin_lock(session, &aio->aio_lock);
+	aio->is_running = false;
+	if (aio->n_workers > 0) {
+		//wait until all AIO threads close
+		__wt_spin_unlock(session, &aio->aio_lock);
+		//Last calls
+		for (i = 0; i < aio->n_segs; ++i) {
+			__wt_cond_signal(aio->worker_sessions[i], aio->aio_req_conds[i]);
+		}
+		__wt_cond_wait(session, aio->all_aio_closed_cond, 0, NULL);
+		printf("All AIO threads are closed, release resources\n");
+	}
+	else
+		__wt_spin_unlock(session, &aio->aio_lock);
 	// (1) Events, locks
 	 free(aio->events);
 
 	 __wt_spin_destroy(session, &aio->aio_lock);
 	 __wt_cond_destroy(session, &aio->not_full_cond);
 	 __wt_cond_destroy(session, &aio->is_aio_req_cond);
+	 __wt_cond_destroy(session, &aio->all_aio_closed_cond);
 
 	//(2) Segments
 	for (i = 0; i < aio->n_segs; ++i) {
@@ -286,10 +303,13 @@ check_seg:
 		if (pnext_list != NULL && pnext_list->is_flush){
 			int hashed = plist->hashed_id;
 
-			printf("this list %zu wait for the older list %zu finish propagating \n", plist->list_id, pnext_list->list_id);
+			assert(hashed == pnext_list->hashed_id);
 
-			__wt_cond_wait(session, pmw->pbuf->prev_list_flush_conds[hashed], 0, NULL); 
+			printf("NNNN [3] this list %zu with hashed_id %d is waiting for the older list %zu finish propagating ... \n", plist->list_id, hashed, pnext_list->list_id);
 
+			__wt_cond_wait(session, pmw->pbuf->prev_list_flush_conds[hashed], 0, NULL); //see pm_handle_finished_list_with_flusher 
+
+			printf("this list %zu wakeup and check again\n", plist->list_id);
 			goto check_seg;
 		}
 		//IMPORTANT NOTE: waiting until the older list (with the same hased) finish flushing 
@@ -709,6 +729,7 @@ static void* pm_aio_worker (void* arg) {
         aio->n_workers--;
         if (aio->n_workers == 0){
             printf("PMEM_INFO: close the last aio worker thread \n");
+			__wt_cond_signal(session, aio->all_aio_closed_cond);
         }
         //if (lock_ret == 0)
         //__wt_spin_unlock(worker_session, &aio->aio_lock);

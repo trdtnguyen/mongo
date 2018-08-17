@@ -1298,12 +1298,12 @@ pm_handle_asyn_finished_block(
  (3) Remove the related linked lists
  We handle fsync() for blocks in the list in handle_AIO_seg_complete() 
  * */
-void
+	void
 pm_handle_finished_list_with_flusher(
-	   	PMEM_WRAPPER*		pmw,
-	   	PMEM_BUF_BLOCK_LIST*		pflush_list)
+		PMEM_WRAPPER*		pmw,
+		PMEM_BUF_BLOCK_LIST*		pflush_list)
 {
-	
+
 	WT_SESSION_IMPL *session = pmw->session;
 	PMEMobjpool*		pop = pmw->pop;
 	PMEM_BUF*			buf = pmw->pbuf;
@@ -1316,16 +1316,14 @@ pm_handle_finished_list_with_flusher(
 	PMEM_BUF_BLOCK* pfirst_block = D_RW(D_RW(pflush_list->arr)[0]);
 
 	TOID_ASSIGN(flush_list, pfirst_block->list.oid);
-
 	assert(pflush_list);
-	
 
 	pmemobj_rwlock_wrlock(pop, &pflush_list->lock);
 
-#if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
+//#if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
 	printf("\n [*****[6]  BEGIN pm_handle_finished_list_with_flusher list %zu hashed_id %d\n",
 			pflush_list->list_id, pflush_list->hashed_id);
-#endif
+//#endif
 	//Now all pages in this list are persistent in disk
 
 	//(1) Reset blocks in the list
@@ -1337,7 +1335,6 @@ pm_handle_finished_list_with_flusher(
 
 	pflush_list->cur_pages = 0;
 	pflush_list->is_flush = false;
-	pflush_list->hashed_id = PMEM_ID_NONE;
 
 	// (2) Remove this list from the doubled-linked list
 	//assert( !TOID_IS_NULL(pflush_list->prev_list) );
@@ -1348,9 +1345,6 @@ pm_handle_finished_list_with_flusher(
 	if (pprev_list != NULL &&
 			D_RW(pprev_list->next_list) != NULL &&
 			D_RW(pprev_list->next_list)->list_id == pflush_list->list_id){
-		//signal the waiting list
-		int hashed = pprev_list->hashed_id;
-		__wt_cond_signal(session, pmw->pbuf->prev_list_flush_conds[hashed]);
 
 		if (pnext_list == NULL) {
 			TOID_ASSIGN(pprev_list->next_list, OID_NULL);
@@ -1358,6 +1352,14 @@ pm_handle_finished_list_with_flusher(
 		else {
 			TOID_ASSIGN(pprev_list->next_list, (pflush_list->next_list).oid);
 		}
+		//signal the waiting list
+		int hashed = pprev_list->hashed_id;
+
+		assert(hashed == pflush_list->hashed_id);
+
+		printf("NNNN [6] This list %zu with hashed_id %d signal for its prev list %zu wakeup\n",
+				pflush_list->list_id, hashed, pprev_list->list_id);
+		__wt_cond_signal(session, pmw->pbuf->prev_list_flush_conds[hashed]);
 	}
 
 	if (pnext_list != NULL &&
@@ -1377,27 +1379,29 @@ pm_handle_finished_list_with_flusher(
 		}
 	}
 
-		TOID_ASSIGN(pflush_list->next_list, OID_NULL);
-		TOID_ASSIGN(pflush_list->prev_list, OID_NULL);
+	pflush_list->hashed_id = PMEM_ID_NONE;
 
-		// (3) we return this list to the free_pool
-		PMEM_BUF_FREE_POOL* pfree_pool;
-		pfree_pool = D_RW(buf->free_pool);
+	TOID_ASSIGN(pflush_list->next_list, OID_NULL);
+	TOID_ASSIGN(pflush_list->prev_list, OID_NULL);
 
-		pmemobj_rwlock_wrlock(pop, &pfree_pool->lock);
+	// (3) we return this list to the free_pool
+	PMEM_BUF_FREE_POOL* pfree_pool;
+	pfree_pool = D_RW(buf->free_pool);
 
-		POBJ_LIST_INSERT_TAIL(pop, &pfree_pool->head, flush_list, list_entries);
-		pfree_pool->cur_lists++;
-		//wakeup who is waitting for free_pool available
-		//os_event_set(buf->free_pool_event);
-		__wt_cond_signal(session, buf->free_pool_cond);
-		
+	pmemobj_rwlock_wrlock(pop, &pfree_pool->lock);
+
+	POBJ_LIST_INSERT_TAIL(pop, &pfree_pool->head, flush_list, list_entries);
+	pfree_pool->cur_lists++;
+	//wakeup who is waitting for free_pool available
+	//os_event_set(buf->free_pool_event);
+	__wt_cond_signal(session, buf->free_pool_cond);
+
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
-		printf("\n *****[6] END finish AIO List %zu, cur free pool size %zu]\n", pflush_list->list_id, pfree_pool->cur_lists);
+	printf("\n *****[6] END finish AIO List %zu, cur free pool size %zu]\n", pflush_list->list_id, pfree_pool->cur_lists);
 #endif
-		pmemobj_rwlock_unlock(pop, &pfree_pool->lock);
-		//the list has some unfinished aio	
-		pmemobj_rwlock_unlock(pop, &pflush_list->lock);
+	pmemobj_rwlock_unlock(pop, &pfree_pool->lock);
+	//the list has some unfinished aio	
+	pmemobj_rwlock_unlock(pop, &pflush_list->lock);
 }
 
 /*
@@ -2107,15 +2111,24 @@ pm_buf_flusher_close(
 	buf = pmw->pbuf;
 	flusher = buf->flusher;
 	
+	 __wt_spin_lock(session, &flusher->flusher_lock);
 	flusher->is_running = false;
 
 	//wait for all workers finish their work
-	while (flusher->n_workers > 0) {
-		//os_thread_sleep(10000);
-		__wt_cond_signal(session,flusher->is_req_not_empty_cond);
-		__wt_sleep(0, 1);
+	if (flusher->n_workers > 0){
+		__wt_spin_unlock(session, &flusher->flusher_lock);
+		//The last calls
+		for (i = 0; i < flusher->size; ++i){
+			__wt_cond_signal(session, flusher->flusher_conds[i]);
+		}
+		__wt_cond_wait(session, flusher->is_all_closed_cond, 0, NULL);
+		printf("All flusher workers are closed, release resources\n");	
 	}
-	
+	else {
+		__wt_spin_unlock(session, &flusher->flusher_lock);
+	}
+
+	//flush array	
 	for (i = 0; i < flusher->size; i++) {
 		if (flusher->flush_list_arr[i]){
 			//free(buf->flusher->flush_list_arr[i]);
@@ -2213,7 +2226,12 @@ static void* pm_flusher_worker (void* arg) {
 		select_i = flusher_idx;	
 		//Get the plist based on the flusher_idx
 		plist = flusher->flush_list_arr[flusher_idx];
+
 		if (plist == NULL){
+			if (!flusher->is_running){
+				//Shutdowning
+				break;
+			}
 			printf("pm_flusher_worker() plist is NULL, logical error!!! Exit\n");
 			exit(0);
 		}
@@ -2283,8 +2301,7 @@ static void* pm_flusher_worker (void* arg) {
 	 __wt_spin_lock(session, &flusher->flusher_lock);
 	flusher->n_workers--;
 	if (flusher->n_workers == 0) {
-		printf("The last worker is closing\n");
-		//os_event_set(flusher->is_all_closed);
+		__wt_cond_signal(session, flusher->is_all_closed_cond);
 	}
 	//if (lock_ret != 0)
 		__wt_spin_unlock(session, &flusher->flusher_lock);
