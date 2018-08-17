@@ -448,6 +448,7 @@ struct __pmem_buf {
 	//os_event_t*  flush_events; //N flush events for N buckets
 	//os_event_t free_pool_event; //event for free_pool
 	WT_CONDVAR**  flush_conds; //N flush events for N buckets
+	WT_CONDVAR**  prev_list_flush_conds; //per-bucket cond, used when multiple lists with same hashed are propagating concurrency
 	WT_CONDVAR* free_pool_cond; //event for free_pool
 	
 

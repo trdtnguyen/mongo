@@ -263,6 +263,7 @@ pm_process_batch(
 
 	AIO* aio = (AIO*) pmw->aio;
 	WT_SESSION_IMPL* session = pmw->session;
+	PMEM_BUF_BLOCK_LIST* pnext_list;
 	//WT_SESSION_IMPL* worker_session;
 
 	ulint		local_seg;
@@ -280,6 +281,18 @@ pm_process_batch(
 	//Wait in case current array is full
 check_seg:
 	for (;;) {
+
+		pnext_list = D_RW(plist->next_list);
+		if (pnext_list != NULL && pnext_list->is_flush){
+			int hashed = plist->hashed_id;
+
+			printf("this list %zu wait for the older list %zu finish propagating \n", plist->list_id, pnext_list->list_id);
+
+			__wt_cond_wait(session, pmw->pbuf->prev_list_flush_conds[hashed], 0, NULL); 
+
+			goto check_seg;
+		}
+		//IMPORTANT NOTE: waiting until the older list (with the same hased) finish flushing 
 
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
     printf("[3] plist %zu try to acquire aio_lock, reserved_segs %zu / total segs %zu... \n", plist->list_id, aio->n_seg_reserved, aio->n_segs);
