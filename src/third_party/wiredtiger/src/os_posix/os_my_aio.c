@@ -280,7 +280,7 @@ pm_process_batch(
 
 	AIO* aio = (AIO*) pmw->aio;
 	WT_SESSION_IMPL* session = pmw->session;
-	PMEM_BUF_BLOCK_LIST* pnext_list;
+	//PMEM_BUF_BLOCK_LIST* pnext_list;
 	//WT_SESSION_IMPL* worker_session;
 
 	ulint		local_seg;
@@ -298,22 +298,27 @@ pm_process_batch(
 	//Wait in case current array is full
 check_seg:
 	for (;;) {
-
+/*
+		//IMPORTANT NOTE: waiting until the older list (with the same hased) finish flushing 
 		pnext_list = D_RW(plist->next_list);
-		if (pnext_list != NULL && pnext_list->is_flush){
+		if (pnext_list != NULL && 
+			pnext_list->state == PMEM_LIST_PROPAGATING){
 			int hashed = plist->hashed_id;
 
 			assert(hashed == pnext_list->hashed_id);
 
-			printf("NNNN [3] this list %zu with hashed_id %d is waiting for the older list %zu finish propagating ... \n", plist->list_id, hashed, pnext_list->list_id);
+			printf("NNNN [3] this list %zu with hashed_id %d is waiting for the older list %zu with state %d finish propagating ... \n", plist->list_id, hashed, pnext_list->list_id, pnext_list->state);
+
+			plist->state = PMEM_LIST_WAIT_PROP;
 
 			__wt_cond_wait(session, pmw->pbuf->prev_list_flush_conds[hashed], 0, NULL); //see pm_handle_finished_list_with_flusher 
-
+			//wait....
+			
 			printf("this list %zu wakeup and check again\n", plist->list_id);
+			plist->state = PMEM_LIST_PREP_PROP;
 			goto check_seg;
 		}
-		//IMPORTANT NOTE: waiting until the older list (with the same hased) finish flushing 
-
+*/
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
     printf("[3] plist %zu try to acquire aio_lock, reserved_segs %zu / total segs %zu... \n", plist->list_id, aio->n_seg_reserved, aio->n_segs);
 #endif
@@ -490,7 +495,10 @@ check_seg:
 
     gettimeofday(&t1, NULL);
 #endif
-    
+	
+	//set state before io_submit()
+	plist->state = PMEM_LIST_PROPAGATING;
+
 	ret = io_submit(
 			aio->aio_ctx[io_ctx_index],
 			wrapper->io_pending,
@@ -1110,6 +1118,9 @@ PMEM_BUF_BLOCK_LIST*
 			in_slot->err = PMEM_SUCCESS;
 			in_slot->ret = events[i].res2;
 			in_slot->n_bytes = events[i].res;
+
+			assert (in_slot->n_bytes == (ssize_t)in_slot->len);
+
             pblock_out = (PMEM_BUF_BLOCK*) in_slot->m1;
             
             TOID_ASSIGN(flush_list_tem, pblock_out->list.oid);

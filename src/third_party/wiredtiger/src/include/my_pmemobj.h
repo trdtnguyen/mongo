@@ -68,6 +68,14 @@ typedef off_t wt_off_t;
 
 #define PMEM_MB 1048576 //1024 * 1024
 #define PMEMOBJ_FILE_NAME "pmemobjfile"
+
+//list state
+#define PMEM_LIST_FILLING 1
+#define PMEM_LIST_PREP_PROP 2
+#define PMEM_LIST_PROPAGATING 3
+#define PMEM_LIST_WAIT_PROP 4
+#define PMEM_LIST_FREE 5
+
 //OS_FILE_LOG_BLOCK_SIZE =512 is defined in os0file.h
 //static const size_t PMEM_MB = 1024 * 1024;
 static const size_t PMEM_MAX_LOG_BUF_SIZE = 1 * 1024 * PMEM_MB;
@@ -400,7 +408,7 @@ struct __pmem_buf_block_list_t {
 
 	size_t				max_pages; //max number of pages
 	size_t				cur_pages; // current buffered pages
-	bool				is_flush;
+	int					state;
 	size_t				n_aio_pending; //number of pending aio
 	size_t				n_sio_pending; //number of pending sync io 
 	size_t				n_flush; //number of flush
@@ -567,6 +575,17 @@ pm_buf_write_with_flusher(
 			const char*		fname,
 		   	uint64_t		name_hash,
 		   	off_t			offset,
+		   	uint32_t		checksum,
+		   	size_t			size,
+		   	byte*			src_data);
+
+int
+pm_buf_write_first_page(
+		   	PMEM_WRAPPER*	pmw,
+			const char*		fname,
+		   	uint64_t		name_hash,
+		   	off_t			offset,
+		   	uint32_t		checksum,
 		   	size_t			size,
 		   	byte*			src_data);
 

@@ -391,7 +391,6 @@ pm_buf_lists_init(
 		//pmemobj_rwlock_wrlock(pop, &plist->lock);
 
 		plist->cur_pages = 0;
-		plist->is_flush = false;
 		plist->n_aio_pending = 0;
 		plist->n_sio_pending = 0;
 		plist->max_pages = bucket_size / page_size;
@@ -401,6 +400,7 @@ pm_buf_lists_init(
 		cur_bucket++;
 		plist->hashed_id = i;
 		plist->check = PMEM_AIO_CHECK;
+		plist->state = PMEM_LIST_FILLING;
 		TOID_ASSIGN(plist->next_list, OID_NULL);
 		TOID_ASSIGN(plist->prev_list, OID_NULL);
 		//plist->pext_list = NULL;
@@ -457,7 +457,6 @@ pm_buf_lists_init(
 
 		pfreelist->cur_pages = 0;
 		pfreelist->max_pages = bucket_size / page_size;
-		pfreelist->is_flush = false;
 		pfreelist->n_aio_pending = 0;
 		pfreelist->n_sio_pending = 0;
 		pfreelist->list_id = cur_bucket;
@@ -465,6 +464,7 @@ pm_buf_lists_init(
 		//pfreelist->flush_worker_id = PMEM_ID_NONE;
 		cur_bucket++;
 		pfreelist->check = PMEM_AIO_CHECK;
+		pfreelist->state = PMEM_LIST_FREE;
 		TOID_ASSIGN(pfreelist->next_list, OID_NULL);
 		TOID_ASSIGN(pfreelist->prev_list, OID_NULL);
 	
@@ -512,7 +512,6 @@ pm_buf_lists_init(
 	pspeclist = D_RW(buf->spec_list);
 	pspeclist->cur_pages = 0;
 	pspeclist->max_pages = bucket_size / page_size;
-	pspeclist->is_flush = false;
 	pspeclist->n_aio_pending = 0;
 	pspeclist->n_sio_pending = 0;
 	pspeclist->list_id = cur_bucket;
@@ -520,6 +519,7 @@ pm_buf_lists_init(
 	//pfreelist->flush_worker_id = PMEM_ID_NONE;
 	cur_bucket++;
 	pspeclist->check = PMEM_AIO_CHECK;
+	pspeclist->state = PMEM_LIST_FILLING;
 	TOID_ASSIGN(pspeclist->next_list, OID_NULL);
 	TOID_ASSIGN(pspeclist->prev_list, OID_NULL);
 	//init pages in spec list 
@@ -563,7 +563,7 @@ pm_buf_single_list_init(
 		// Make properties in the list persist
 		pmemobj_persist(pop, &plist->cur_pages, sizeof(plist->cur_pages));
 		pmemobj_persist(pop, &plist->max_pages, sizeof(plist->max_pages));
-		pmemobj_persist(pop, &plist->is_flush, sizeof(plist->is_flush));
+		pmemobj_persist(pop, &plist->state, sizeof(plist->state));
 		pmemobj_persist(pop, &plist->next_list, sizeof(plist->next_list));
 		pmemobj_persist(pop, &plist->n_aio_pending, sizeof(plist->n_aio_pending));
 		pmemobj_persist(pop, &plist->n_sio_pending, sizeof(plist->n_sio_pending));
@@ -635,14 +635,13 @@ pm_buf_write_with_flusher(
 			const char*		fname,
 		   	uint64_t		name_hash,
 		   	off_t			offset,
+		   	uint32_t		checksum,
 		   	size_t			size,
 		   	byte*			src_data)
 {
 	
 	if (strstr (fname, "ycsb") == NULL  
 			) {
-		//printf("PMEM_INFO: skip write file %s, offset %zu, size %zu\n",
-		//		fname, offset, size);
 		return PMEM_ERROR;
 	}
 
@@ -650,6 +649,11 @@ pm_buf_write_with_flusher(
 		//printf("XXXXX PMEM_INFO: in pm_buf_write_with_flusher(), write size %zu exceed the max size %zu, file %s offset %zu \n", size, pmw->pbuf->page_size, fname, offset);
 		return PMEM_ERROR;
 	}	
+
+	if (offset == 0) {
+		return pm_buf_write_first_page(pmw, fname, name_hash, offset, checksum, size, src_data);
+
+	}
 
 	WT_SESSION_IMPL *session = pmw->session;
 	PMEM_BUF*		buf = pmw->pbuf;
@@ -677,85 +681,6 @@ pm_buf_write_with_flusher(
 #endif 
 	//NOTE: this size may not fixed in WT
 	page_size = size;
-	//UNIV_MEM_ASSERT_RW(src_data, page_size);
-//page 0 is put in the special list
-	if (offset == 0) {
-//TODO: handle meta pages in MongoDB
-		printf("pm_buf_write offset 0 in file %s size %zu\n", fname, size);
-		PMEM_BUF_BLOCK_LIST* pspec_list;
-		PMEM_BUF_BLOCK*		pspec_block;
-
-		pspec_list = D_RW(buf->spec_list); 
-
-		pmemobj_rwlock_wrlock(pop, &pspec_list->lock);
-
-		pdata = buf->p_align;
-		//scan in the special list
-		for (i = 0; i < pspec_list->cur_pages; i++){
-			pspec_block = D_RW(D_RW(pspec_list->arr)[i]);
-
-			if (pspec_block->state == PMEM_FREE_BLOCK){
-				//write the new metadata block in the special list
-				break;
-			}	
-			else if (pspec_block->state == PMEM_IN_USED_BLOCK) {
-				if (pspec_block->disk_off == offset && 
-						pspec_block->name_hash == name_hash) {
-					//overwrite this spec block
-					pmemobj_memset_persist(pop, pdata + pspec_block->pmemaddr, 0, pspec_block->max_size); 
-					pmemobj_memcpy_persist(pop, pdata + pspec_block->pmemaddr, src_data, page_size); 
-					//update the file_name, page_id in case of tmp space
-					strcpy(pspec_block->file_name, fname);
-					pspec_block->disk_off = offset;
-					//update size is necessary in WT
-					if( size != pspec_block->size){
-						printf("PMEM_WARN: write on the same offset %zu but differs size old: %zu new: %zu \n", offset, pspec_block->size, size);
-					}
-					pspec_block->size = size;
-
-					pmemobj_rwlock_unlock(pop, &pspec_list->lock);
-
-					return PMEM_SUCCESS;
-				}
-				//else: just skip this block
-			}
-			//next block
-		}//end for
-		
-		if (i < pspec_list->cur_pages) {
-			printf("PMEM_BUF Logical error when handle the special list\n");
-			assert(0);
-		}
-		//write the new metadata block in the special list
-		if (i == pspec_list->cur_pages) {
-			pspec_block = D_RW(D_RW(pspec_list->arr)[i]);
-			//add new block to the spec list
-			pspec_block->disk_off = offset;
-			//update size is necessary in WT
-			if( size != pspec_block->size){
-				printf("PMEM_WARN: write on the same offset %zu but differs size old: %zu new: %zu \n", offset, pspec_block->size, size);
-			}
-			pspec_block->size = size;
-
-			pspec_block->state = PMEM_IN_USED_BLOCK;
-			strcpy(pspec_block->file_name, fname);
-			pspec_block->name_hash = name_hash;
-			pmemobj_memset_persist(pop, pdata + pspec_block->pmemaddr, 0, pspec_block->max_size); 
-			pmemobj_memcpy_persist(pop, pdata + pspec_block->pmemaddr, src_data, page_size); 
-			++(pspec_list->cur_pages);
-
-			printf("Add new block to the spec list, file %s cur_pages %zu \n", fname,  pspec_list->cur_pages);
-
-			//We do not handle flushing the spec list here
-			if (pspec_list->cur_pages >= pspec_list->max_pages * pmw->PMEM_BUF_FLUSH_PCT) {
-				printf("We do not handle flushing spec list in this version, adjust the input params to get larger size of spec list\n");
-				assert(0);
-			}
-		}
-		pmemobj_rwlock_unlock(pop, &pspec_list->lock);
-		return PMEM_SUCCESS;
-	} // end if page_no == 0
-// end handle special list
 
 #if defined (UNIV_PMEMOBJ_BUF_PARTITION)
 	PMEM_LESS_BUCKET_HASH_KEY(hashed, fname, offset);
@@ -769,7 +694,8 @@ pm_buf_write_with_flusher(
 retry:
 	//the safe check
 	if (is_safe_check){
-		if (D_RO(D_RO(buf->buckets)[hashed])->is_flush) {
+		if (D_RO(D_RO(buf->buckets)[hashed])->state != PMEM_LIST_FILLING && 
+			D_RO(D_RO(buf->buckets)[hashed])->state == PMEM_LIST_FREE ) {
 			//os_event_wait(buf->flush_events[hashed]);
 			__wt_cond_wait(session, buf->flush_conds[hashed], 0, NULL);
 			goto retry;
@@ -781,9 +707,12 @@ retry:
 	assert(phashlist);
 
 	pmemobj_rwlock_wrlock(pop, &phashlist->lock);
+	//printf("BEGIN pm_write plist %zu with state %d\n", phashlist->list_id, phashlist->state);
 
 	//double check
-	if (phashlist->is_flush) {
+	//if (phashlist->is_flush) {
+	if (phashlist->state != PMEM_LIST_FILLING && 
+			phashlist->state != PMEM_LIST_FREE) {
 		//When I was blocked (due to mutex) this list is non-flush. When I acquire the lock, it becomes flushing
 
 /* NOTE for recovery 
@@ -863,13 +792,14 @@ retry:
 	printf("========   PMEM_DEBUG: in pmem_buf_write, the write on file %s offset %zu size %zu hash_list id %zu \n ", fname, offset, size, phashlist->list_id);
 #endif	
 
+	//printf("======== DAT in pmem_buf_write, file %s offset %zu checksum %u size %zu hash_list id %zu hashed %zu \n ", fname, offset, checksum, size, phashlist->list_id, hashed);
 	// (2) At this point, we get the free and un-blocked block, write data to this block
 #if defined (UNIV_PMEMOBJ_BUF_PARTITION_STAT)
 	pmemobj_rwlock_wrlock(pop, &buf->filemap->lock);
 	pm_filemap_update_items(buf, fname, offset, hashed, PMEM_BUCKET_SIZE);
 	pmemobj_rwlock_unlock(pop, &buf->filemap->lock);
 #endif 
-
+	
 	pfree_block->disk_off = offset;
 	strcpy(pfree_block->file_name, fname);
 	pfree_block->name_hash = name_hash;
@@ -881,6 +811,9 @@ retry:
 	//assert(pfree_block->size == size);
 	assert(pfree_block->state == PMEM_FREE_BLOCK);
 	pfree_block->state = PMEM_IN_USED_BLOCK;
+
+	//this set is useful for the first write (PMEM_LIST_FREE -> PMEM_LIST_FILLING)
+	phashlist->state = PMEM_LIST_FILLING;
 
 	pmemobj_memset_persist(pop, pdata + pfree_block->pmemaddr, 0, pfree_block->max_size); 
 	pmemobj_memcpy_persist(pop, pdata + pfree_block->pmemaddr, src_data, size); 
@@ -899,7 +832,7 @@ retry:
 	if (phashlist->cur_pages >= phashlist->max_pages * pmw->PMEM_BUF_FLUSH_PCT) {
 		//(3) The hashlist is (nearly) full, flush it and assign a free list 
 		phashlist->hashed_id = hashed;
-		phashlist->is_flush = true;
+		phashlist->state = PMEM_LIST_PREP_PROP;
 		//block upcomming writes into this bucket
 		//os_event_reset(buf->flush_events[hashed]);
 		
@@ -928,6 +861,97 @@ retry:
 		//pmemobj_rwlock_unlock(pop, &D_RW(D_RW(buf->buckets)[hashed])->lock);
 	}
 
+	return PMEM_SUCCESS;
+}
+
+int
+pm_buf_write_first_page(
+		PMEM_WRAPPER*	pmw,
+		const char*		fname,
+		uint64_t		name_hash,
+		off_t			offset,
+		uint32_t		checksum,
+		size_t			size,
+		byte*			src_data){
+
+	printf("pm_buf_write offset 0 in file %s size %zu\n", fname, size);
+	ulint i;
+	PMEMobjpool*	pop = pmw->pop;
+	PMEM_BUF_BLOCK_LIST* pspec_list;
+	PMEM_BUF_BLOCK*		pspec_block;
+
+	byte* pdata;
+	size_t page_size = size;
+
+	PMEM_BUF*		buf = pmw->pbuf;
+	pspec_list = D_RW(buf->spec_list); 
+
+	pmemobj_rwlock_wrlock(pop, &pspec_list->lock);
+
+	pdata = buf->p_align;
+	//scan in the special list
+	for (i = 0; i < pspec_list->cur_pages; i++){
+		pspec_block = D_RW(D_RW(pspec_list->arr)[i]);
+
+		if (pspec_block->state == PMEM_FREE_BLOCK){
+			//write the new metadata block in the special list
+			break;
+		}	
+		else if (pspec_block->state == PMEM_IN_USED_BLOCK) {
+			if (pspec_block->disk_off == offset && 
+					pspec_block->name_hash == name_hash) {
+				//overwrite this spec block
+				pmemobj_memset_persist(pop, pdata + pspec_block->pmemaddr, 0, pspec_block->max_size); 
+				pmemobj_memcpy_persist(pop, pdata + pspec_block->pmemaddr, src_data, page_size); 
+				//update the file_name, page_id in case of tmp space
+				strcpy(pspec_block->file_name, fname);
+				pspec_block->disk_off = offset;
+				//update size is necessary in WT
+				if( size != pspec_block->size){
+					printf("PMEM_WARN: write on the same offset %zu but differs size old: %zu new: %zu \n", offset, pspec_block->size, size);
+				}
+				pspec_block->size = size;
+
+				pmemobj_rwlock_unlock(pop, &pspec_list->lock);
+
+				return PMEM_SUCCESS;
+			}
+			//else: just skip this block
+		}
+		//next block
+	}//end for
+
+	if (i < pspec_list->cur_pages) {
+		printf("PMEM_BUF Logical error when handle the special list\n");
+		assert(0);
+	}
+	//write the new metadata block in the special list
+	if (i == pspec_list->cur_pages) {
+		pspec_block = D_RW(D_RW(pspec_list->arr)[i]);
+		//add new block to the spec list
+		pspec_block->disk_off = offset;
+		//update size is necessary in WT
+		if( size != pspec_block->size){
+			printf("PMEM_WARN: write on the same offset %zu but differs size old: %zu new: %zu \n", offset, pspec_block->size, size);
+		}
+		pspec_block->size = size;
+
+		pspec_block->state = PMEM_IN_USED_BLOCK;
+		strcpy(pspec_block->file_name, fname);
+		pspec_block->name_hash = name_hash;
+		pmemobj_memset_persist(pop, pdata + pspec_block->pmemaddr, 0, pspec_block->max_size); 
+		pmemobj_memcpy_persist(pop, pdata + pspec_block->pmemaddr, src_data, page_size); 
+		++(pspec_list->cur_pages);
+
+		printf("Add new block to the spec list, file %s cur_pages %zu \n", fname,  pspec_list->cur_pages);
+
+		//We do not handle flushing the spec list here
+		if (pspec_list->cur_pages >= pspec_list->max_pages * pmw->PMEM_BUF_FLUSH_PCT) {
+			printf("We do not handle flushing spec list in this version, adjust the input params to get larger size of spec list\n");
+			assert(0);
+		}
+	}
+	pmemobj_rwlock_unlock(pop, &pspec_list->lock);
 	return PMEM_SUCCESS;
 }
 
@@ -1084,7 +1108,7 @@ pm_handle_finished_block(
 		}
 
 		pflush_list->cur_pages = 0;
-		pflush_list->is_flush = false;
+		pflush_list->state = PMEM_LIST_FREE;
 		pflush_list->hashed_id = PMEM_ID_NONE;
 		
 		// (2) Remove this list from the doubled-linked list
@@ -1182,7 +1206,7 @@ pm_handle_finished_block_no_free_pool(
 		}
 
 		pflush_list->cur_pages = 0;
-		pflush_list->is_flush = false;
+		pflush_list->state = PMEM_LIST_FREE;
 
 		//os_event_set(buf->flush_events[pflush_list->hashed_id]);
 		__wt_cond_signal(session, buf->flush_conds[pflush_list->hashed_id]);
@@ -1231,7 +1255,7 @@ pm_handle_asyn_finished_block(
 		}
 
 		pflush_list->cur_pages = 0;
-		pflush_list->is_flush = false;
+		pflush_list->state = PMEM_LIST_FREE;
 		pflush_list->hashed_id = PMEM_ID_NONE;
 
 		// (2.2) Remove this list from the doubled-linked list
@@ -1334,7 +1358,7 @@ pm_handle_finished_list_with_flusher(
 	}
 
 	pflush_list->cur_pages = 0;
-	pflush_list->is_flush = false;
+	pflush_list->state = PMEM_LIST_FREE;
 
 	// (2) Remove this list from the doubled-linked list
 	//assert( !TOID_IS_NULL(pflush_list->prev_list) );
@@ -1353,13 +1377,15 @@ pm_handle_finished_list_with_flusher(
 			TOID_ASSIGN(pprev_list->next_list, (pflush_list->next_list).oid);
 		}
 		//signal the waiting list
-		int hashed = pprev_list->hashed_id;
+		if (pprev_list->state == PMEM_LIST_WAIT_PROP){
+			int hashed = pprev_list->hashed_id;
 
-		assert(hashed == pflush_list->hashed_id);
+			assert(hashed == pflush_list->hashed_id);
 
-		printf("NNNN [6] This list %zu with hashed_id %d signal for its prev list %zu wakeup\n",
-				pflush_list->list_id, hashed, pprev_list->list_id);
-		__wt_cond_signal(session, pmw->pbuf->prev_list_flush_conds[hashed]);
+			printf("NNNN [6] This list %zu with hashed_id %d signal for its prev list %zu wakeup\n",
+					pflush_list->list_id, hashed, pprev_list->list_id);
+			__wt_cond_signal(session, pmw->pbuf->prev_list_flush_conds[hashed]);
+		}
 	}
 
 	if (pnext_list != NULL &&
@@ -1396,9 +1422,9 @@ pm_handle_finished_list_with_flusher(
 	//os_event_set(buf->free_pool_event);
 	__wt_cond_signal(session, buf->free_pool_cond);
 
-#if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
+//#if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
 	printf("\n *****[6] END finish AIO List %zu, cur free pool size %zu]\n", pflush_list->list_id, pfree_pool->cur_lists);
-#endif
+//#endif
 	pmemobj_rwlock_unlock(pop, &pfree_pool->lock);
 	//the list has some unfinished aio	
 	pmemobj_rwlock_unlock(pop, &pflush_list->lock);
@@ -1468,7 +1494,7 @@ pm_handle_finished_block_with_flusher(
 		}
 
 		pflush_list->cur_pages = 0;
-		pflush_list->is_flush = false;
+		pflush_list->state = PMEM_LIST_FREE;
 		pflush_list->hashed_id = PMEM_ID_NONE;
 		
 		// (2) Remove this list from the doubled-linked list
@@ -1692,7 +1718,7 @@ pm_buf_read(
 #endif
 #if defined(UNIV_PMEMOBJ_BUF_STAT)
 				++buf->bucket_stats[hashed].n_reads_hit;
-				if (D_RO(cur_list)->is_flush)
+				if (D_RO(cur_list)->state == PMEM_LIST_PREP_PROP)
 					++buf->bucket_stats[hashed].n_reads_flushing;
 #endif
 				//if(is_lock_on_read)
@@ -1796,7 +1822,8 @@ pm_buf_resume_flushing(
 		TOID_ASSIGN(cur_list, (D_RW(buf->buckets)[i]).oid);
 		phashlist = D_RW(cur_list);
 		if (phashlist->cur_pages >= phashlist->max_pages * pmw->PMEM_BUF_FLUSH_PCT) {
-			assert(phashlist->is_flush);
+			assert(phashlist->state == PMEM_LIST_PREP_PROP ||
+					phashlist->state == PMEM_LIST_PROPAGATING);
 			assert((uint64_t) phashlist->hashed_id == i);
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
 			printf("\ncase 1 PMEM_RECOVERY ==> resume flushing for hashed_id %zu list_id %zu\n", i, phashlist->list_id);
@@ -1810,7 +1837,8 @@ pm_buf_resume_flushing(
 			plist = D_RW(cur_list);
 			if (plist->cur_pages >= plist->max_pages * pmw->PMEM_BUF_FLUSH_PCT) {
 				//for the list in flusher, we only assign the flusher thread, no handle free list replace
-				assert(plist->is_flush);
+			assert(phashlist->state == PMEM_LIST_PREP_PROP ||
+					phashlist->state == PMEM_LIST_PROPAGATING);
 				assert((uint64_t)plist->hashed_id == i);
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
 				printf("\n\t\t case 2 PMEM_RECOVERY ==> resume flushing for linked list %zu of hashlist %zu hashed_id %zu\n", plist->list_id, phashlist->list_id, i);

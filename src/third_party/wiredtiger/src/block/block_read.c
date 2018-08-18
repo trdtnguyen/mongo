@@ -7,7 +7,9 @@
  */
 
 #include "wt_internal.h"
-
+#if defined (UNIV_PMEMOBJ_BUF)
+#include <assert.h>
+#endif
 /*
  * __wt_bm_preload --
  *	Pre-load a page.
@@ -303,6 +305,11 @@ __wt_block_read_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 			return (0);
 		}
 
+#if defined(UNIV_PMEMOBJ_BUF)
+	printf("CHECKSUM ERROR #1: read size %"PRIu32" offset %zu checksum %"PRIu32" page_checksum %"PRIu32" is read from pmem %d\n",
+			size, offset, checksum, page_checksum, (pblock != NULL));
+	assert(0);
+#endif
 		if (!F_ISSET(session, WT_SESSION_QUIET_CORRUPT_FILE))
 			__wt_errx(session,
 			    "read checksum error for %" PRIu32 "B block at "
@@ -322,7 +329,11 @@ __wt_block_read_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 	if (!F_ISSET(session, WT_SESSION_QUIET_CORRUPT_FILE))
 		WT_IGNORE_RET(
 		    __wt_bm_corrupt_dump(session, buf, offset, size, checksum));
-
+#if defined(UNIV_PMEMOBJ_BUF)
+	printf("CHECKSUM ERROR #2: read size %"PRIu32" offset %zu checksum %"PRIu32" swap.checksum %"PRIu32" is read from pmem %d\n",
+			size, offset, checksum, swap.checksum, (pblock != NULL));
+	assert(0);
+#endif
 	/* Panic if a checksum fails during an ordinary read. */
 	return (block->verify ||
 	    F_ISSET(session, WT_SESSION_QUIET_CORRUPT_FILE) ?
