@@ -11,27 +11,8 @@
 
 //Common includes
 #include <stdio.h> //for FILE
-//#include <stdlib.h>
-//#include <sys/types.h>                                                                      
-//#include <sys/time.h> //for struct timeval, gettimeofday()
-//#include <string.h>
-//#include <stdint.h> //for uint64_t
-//#include <math.h> //for log()
-//#include <assert.h>
-//#include <wchar.h>
 #include <unistd.h> //for access() to check file exists
 
-//includes from DBMS
-//#include "univ.i"
-//#include "ut0byte.h"
-//#include "ut0rbt.h"
-//#include "buf0buf.h" //for page_id_t
-//#include "page0types.h"
-//#include "ut0dbg.h"
-//#include "ut0new.h"
-
-//incldue from libpmem
-//#include "wt_internal.h"
 #include <libpmemobj.h>
 //#include "my_pmem_common.h"
 //cc -std=gnu99 ... -lpmemobj -lpmem
@@ -82,21 +63,6 @@ static const size_t PMEM_MAX_LOG_BUF_SIZE = 1 * 1024 * PMEM_MB;
 static const size_t PMEM_PAGE_SIZE = 16*1024; //16KB
 static const size_t PMEM_MAX_DBW_PAGES= 128; // 2 * extent_size
 
-
-//static uint64_t PMEM_N_BUCKETS=64;
-//static uint64_t PMEM_BUCKET_SIZE=128;
-//static double PMEM_BUF_FLUSH_PCT=1;
-//
-//static uint64_t PMEM_N_FLUSH_THREADS=32;
-//set this to large number to eliminate 
-//static uint64_t PMEM_PAGE_PER_BUCKET_BITS=32;
-
-// 1 < this_value < flusher->size (32)
-//static uint64_t PMEM_FLUSHER_WAKE_THRESHOLD=5;
-//static uint64_t PMEM_FLUSHER_WAKE_THRESHOLD=30;
-//
-//static FILE* debug_file = fopen("part_debug.txt","a");
-
 #define PMEM_MAX_LISTS_PER_BUCKET 2
 
 
@@ -104,13 +70,7 @@ enum {
 	PMEM_READ = 1,
 	PMEM_WRITE = 2
 };
-//enum PMEM_OBJ_TYPES {
-//	UNKNOWN_TYPE,
-//	LOG_BUF_TYPE,
-//	DBW_TYPE,
-//	BUF_TYPE,
-//	META_DATA_TYPE
-//};
+
 typedef enum {
 	UNKNOWN_TYPE,
 	LOG_BUF_TYPE,
@@ -461,6 +421,8 @@ struct __pmem_buf {
 	
 
 	PMEMrwlock				param_lock;
+	//new 2018
+	WT_SPINLOCK*		bucket_locks;
 	//TODO: research AIO in MongoDB
 	PMEM_AIO_PARAM_ARRAY* param_arrs;//circular array of pointers
 	uint64_t			param_arr_size; //size of the array
@@ -569,6 +531,15 @@ pm_buf_single_list_init(
 		struct list_constr_args*	args,
 		const size_t				n,
 		const size_t				page_size);
+int
+pm_buf_write_with_flusher_old(
+		   	PMEM_WRAPPER*	pmw,
+			const char*		fname,
+		   	uint64_t		name_hash,
+		   	off_t			offset,
+		   	uint32_t		checksum,
+		   	size_t			size,
+		   	byte*			src_data);
 int
 pm_buf_write_with_flusher(
 		   	PMEM_WRAPPER*	pmw,
@@ -700,25 +671,6 @@ struct __pmem_aio_param_arr {
 	PMEM_AIO_PARAM* params;
 };
 
-//dberr_t
-//pm_fil_io_batch(
-//		const IORequest&	type,
-//		void*				pop_in,
-//		void*				pmem_buf_in,
-//		void*				plist_in);
-//
-//void
-//pm_buf_flush_spaces_in_list(
-//		void* pop_in,
-//	   	void* buf_in,
-//	   	void* flush_list_in);
-
-
-
-
-
-
-
 #if defined(UNIV_PMEMOBJ_BUF_STAT)
 void
 	pm_buf_bucket_stat_init(PMEM_WRAPPER* pmw);
@@ -762,28 +714,8 @@ pm_lc_sleep_if_needed(
 	int64_t		sig_count);
 ///////////////////////////////////////////////////////////
 // Thread handler funcitons
-// TODO: research how MongoDB handle thread 
 // ///////////////////////////////////////////////////////////
 
-//extern "C"
-//os_thread_ret_t
-//DECLARE_THREAD(pm_buf_flush_list_cleaner_coordinator)(
-//		void* arg);
-//
-//extern "C"
-//os_thread_ret_t
-//DECLARE_THREAD(pm_buf_flush_list_cleaner_worker)(
-//		void* arg);
-//
-//extern "C"
-//os_thread_ret_t
-//DECLARE_THREAD(pm_flusher_coordinator)(
-//		void* arg);
-
-//extern "C"
-//os_thread_ret_t
-//DECLARE_THREAD(pm_flusher_worker)(
-//		void* arg);
 static void* pm_flusher_worker (void* arg);
 
 #ifdef UNIV_DEBUG

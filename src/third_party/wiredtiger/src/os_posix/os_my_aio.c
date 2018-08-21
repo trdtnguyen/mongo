@@ -1,6 +1,7 @@
 /*
  *Implement AIO in WiredTiger
 Note: build with -laio option
+Declaration is in src/third_party/wiredtiger/src/include/os0file.h
  * */
 
 #include <libaio.h>
@@ -280,7 +281,7 @@ pm_process_batch(
 
 	AIO* aio = (AIO*) pmw->aio;
 	WT_SESSION_IMPL* session = pmw->session;
-	//PMEM_BUF_BLOCK_LIST* pnext_list;
+	PMEM_BUF_BLOCK_LIST* pnext_list;
 	//WT_SESSION_IMPL* worker_session;
 
 	ulint		local_seg;
@@ -298,11 +299,12 @@ pm_process_batch(
 	//Wait in case current array is full
 check_seg:
 	for (;;) {
-/*
-		//IMPORTANT NOTE: waiting until the older list (with the same hased) finish flushing 
+
+		//IMPORTANT NOTE: waiting until there is no older list in the linked-list
 		pnext_list = D_RW(plist->next_list);
-		if (pnext_list != NULL && 
-			pnext_list->state == PMEM_LIST_PROPAGATING){
+		//if (pnext_list != NULL && 
+		//	pnext_list->state == PMEM_LIST_PROPAGATING){
+		if (pnext_list != NULL){
 			int hashed = plist->hashed_id;
 
 			assert(hashed == pnext_list->hashed_id);
@@ -318,7 +320,7 @@ check_seg:
 			plist->state = PMEM_LIST_PREP_PROP;
 			goto check_seg;
 		}
-*/
+
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
     printf("[3] plist %zu try to acquire aio_lock, reserved_segs %zu / total segs %zu... \n", plist->list_id, aio->n_seg_reserved, aio->n_segs);
 #endif
@@ -780,15 +782,10 @@ void handle_AIO_seg_complete(
 
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
         printf("[5] BEGIN handle_AIO_seg_complete() seg_idx = %zu, plist %zu\n", seg_idx, plist->list_id);
-        printf("\t[5.1] BEGIN pm_handle_finished_list seg_idx = %zu, plist %zu\n", seg_idx, plist->list_id);
 #endif        
-	//(1) Handle the finish list in pm
-	//////////////////////////////////////////////////
-	pm_handle_finished_list_with_flusher(pmw, plist);
-	/////////////////////////////////////////////////
 
+	//pm_handle_finished_list_with_flusher(pmw, plist);
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
-        printf("\t[5.1] END pm_handle_finished_list seg_idx = %zu, plist %zu\n", seg_idx, plist->list_id);
         printf("\t[5.2] BEGIN reset slots seg_idx = %zu, plist %zu\n", seg_idx, plist->list_id);
 #endif        
 	//lock_ret = __wt_spin_trylock(session, &aio->seg_locks[seg_idx]);
@@ -843,6 +840,15 @@ void handle_AIO_seg_complete(
 
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
         printf("\t[5.3] END call fsync  seg_idx = %zu, plist %zu # files to fsyncs %u\n", seg_idx, plist->list_id, fh_cnt);
+        printf("\t[5.1] BEGIN pm_handle_finished_list seg_idx = %zu, plist %zu\n", seg_idx, plist->list_id);
+#endif        
+	//(1) Handle the finish list in pm
+	//////////////////////////////////////////////////
+	pm_handle_finished_list_with_flusher(pmw, plist);
+	/////////////////////////////////////////////////
+	
+#if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
+        printf("\t[5.1] END pm_handle_finished_list seg_idx = %zu, plist %zu\n", seg_idx, plist->list_id);
         printf("[5] END handle_AIO_seg_complete() seg_idx = %zu, plist %zu\n", seg_idx, plist->list_id);
 #endif        
 }

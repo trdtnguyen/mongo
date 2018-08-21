@@ -102,6 +102,7 @@ pm_wrapper_buf_alloc_or_open(
 	uint64_t i;
 	char sbuf[256];
 	WT_SESSION_IMPL *session = pmw->session;
+	int ret;
 
 	/////////////////////////////////////////////////
 	// PART 1: NVM structures
@@ -172,6 +173,13 @@ pm_wrapper_buf_alloc_or_open(
 		exit(0);
 	}
 
+	//The bucket locks
+	pmw->pbuf->bucket_locks = (WT_SPINLOCK*) calloc(pmw->PMEM_N_BUCKETS, sizeof(WT_SPINLOCK));
+
+	for (i = 0; i < pmw->PMEM_N_BUCKETS; ++i){
+		ret = __wt_spin_init(session, &pmw->pbuf->bucket_locks[i], "bucket_locks"); 
+	}
+
 	//In any case (new allocation or resued, we should allocate the flush_events for buckets in DRAM
 	//pmw->pbuf->flush_events = (os_event_t*) calloc(pmw->PMEM_N_BUCKETS, sizeof(os_event_t));
 	pmw->pbuf->flush_conds = (WT_CONDVAR**) calloc(pmw->PMEM_N_BUCKETS, sizeof(WT_CONDVAR*));
@@ -179,12 +187,10 @@ pm_wrapper_buf_alloc_or_open(
 
 	for ( i = 0; i < pmw->PMEM_N_BUCKETS; i++) {
 		sprintf(sbuf,"pm_flush_bucket%zu", i);
-		//pmw->pbuf->flush_events[i] = os_event_create(sbuf);
-		WT_RET(__wt_cond_alloc(session,"flush thread cond", &pmw->pbuf->flush_conds[i]));
-		WT_RET(__wt_cond_alloc(session,"prev list flush cond", &pmw->pbuf->prev_list_flush_conds[i]));
+		ret = __wt_cond_alloc(session,"flush thread cond", &pmw->pbuf->flush_conds[i]);
+		ret =__wt_cond_alloc(session,"prev list flush cond", &pmw->pbuf->prev_list_flush_conds[i]);
 	}
-		//pmw->pbuf->free_pool_event = os_event_create("pm_free_pool_event");
-		WT_RET(__wt_cond_alloc(session,"flush free pool", &pmw->pbuf->free_pool_cond));
+		ret = __wt_cond_alloc(session,"flush free pool", &pmw->pbuf->free_pool_cond);
 
 
 	/*Alocate the param array
@@ -233,12 +239,14 @@ int pm_wrapper_buf_close(PMEM_WRAPPER* pmw) {
 //TODO: find how os event work in MongoDB
 
 	for ( i = 0; i < pmw->PMEM_N_BUCKETS; i++) {
-	//	os_event_destroy(pmw->pbuf->flush_events[i]); 
-	__wt_cond_destroy(session, &pmw->pbuf->flush_conds[i]);
-	__wt_cond_destroy(session, &pmw->pbuf->prev_list_flush_conds[i]);
+		__wt_spin_destroy(session, &pmw->pbuf->bucket_locks[i]);
+
+		__wt_cond_destroy(session, &pmw->pbuf->flush_conds[i]);
+		__wt_cond_destroy(session, &pmw->pbuf->prev_list_flush_conds[i]);
 	}
 	//os_event_destroy(pmw->pbuf->free_pool_event);
 	__wt_cond_destroy(session, &pmw->pbuf->free_pool_cond);
+	free(pmw->pbuf->bucket_locks);
 	free(pmw->pbuf->flush_conds);
 	free(pmw->pbuf->prev_list_flush_conds);
 
@@ -630,7 +638,7 @@ PMEM_BUF* pm_pop_get_buf(PMEMobjpool* pop) {
 @param[in] page_size
  * */
 int
-pm_buf_write_with_flusher(
+pm_buf_write_with_flusher_old(
 		   	PMEM_WRAPPER*	pmw,
 			const char*		fname,
 		   	uint64_t		name_hash,
@@ -741,6 +749,22 @@ retry:
 	}
 	//Now the list is non-flush and I have acquired the lock. Let's do my work
 	pdata = buf->p_align;
+
+	//DEBUG for checksum error when overwrite the old image on disk
+	WT_BLOCK_HEADER *blk, swap;	
+	uint32_t page_checksum;
+	uint32_t page_checksum_prev;
+	uint32_t blk_checksum;
+	
+	page_checksum_prev = __wt_checksum(src_data, size);
+	blk = WT_BLOCK_HEADER_REF(src_data);
+	__wt_block_header_byteswap_copy(blk, &swap);
+
+	blk_checksum = swap.checksum;
+	page_checksum = __wt_checksum((void*)src_data, size);
+
+	printf("======== DAT in pmem_buf_write, file %s offset %zu checksum %u page_checksum_prev %u blk_checksum %u page_checksum %u size %zu hash_list id %zu hashed %zu \n ", fname, offset, checksum, page_checksum_prev, blk_checksum, page_checksum, size, phashlist->list_id, hashed);
+
 	//(1) search in the hashed list for a first FREE block to write on 
 	for (i = 0; i < phashlist->max_pages; i++) {
 		pfree_block = D_RW(D_RW(phashlist->arr)[i]);
@@ -791,8 +815,6 @@ retry:
 #if defined(UNIV_PMEMOBJ_BUF_DEBUG)
 	printf("========   PMEM_DEBUG: in pmem_buf_write, the write on file %s offset %zu size %zu hash_list id %zu \n ", fname, offset, size, phashlist->list_id);
 #endif	
-
-	//printf("======== DAT in pmem_buf_write, file %s offset %zu checksum %u size %zu hash_list id %zu hashed %zu \n ", fname, offset, checksum, size, phashlist->list_id, hashed);
 	// (2) At this point, we get the free and un-blocked block, write data to this block
 #if defined (UNIV_PMEMOBJ_BUF_PARTITION_STAT)
 	pmemobj_rwlock_wrlock(pop, &buf->filemap->lock);
@@ -859,6 +881,204 @@ retry:
 		//unlock the hashed list
 		pmemobj_rwlock_unlock(pop, &phashlist->lock);
 		//pmemobj_rwlock_unlock(pop, &D_RW(D_RW(buf->buckets)[hashed])->lock);
+	}
+
+	return PMEM_SUCCESS;
+}
+
+int
+pm_buf_write_with_flusher(
+		   	PMEM_WRAPPER*	pmw,
+			const char*		fname,
+		   	uint64_t		name_hash,
+		   	off_t			offset,
+		   	uint32_t		checksum,
+		   	size_t			size,
+		   	byte*			src_data)
+{
+	
+	if (strstr (fname, "ycsb") == NULL  
+			) {
+		return PMEM_ERROR;
+	}
+
+	if (pmw->pbuf->page_size < size){
+		return PMEM_ERROR;
+	}	
+
+	if (offset == 0) {
+		return pm_buf_write_first_page(pmw, fname, name_hash, offset, checksum, size, src_data);
+
+	}
+
+	WT_SESSION_IMPL *session = pmw->session;
+	PMEM_BUF*		buf = pmw->pbuf;
+	PMEMobjpool*	pop = pmw->pop;
+
+	ulint hashed;
+	ulint i;
+
+	TOID(PMEM_BUF_BLOCK_LIST) hash_list;
+	PMEM_BUF_BLOCK_LIST* phashlist;
+
+	PMEM_BUF_BLOCK* pfree_block;
+	byte* pdata;
+	//page_id_t page_id;
+	size_t page_size;
+
+	assert(buf);
+	assert(src_data);
+	//NOTE: this size may not fixed in WT
+	page_size = size;
+
+#if defined (UNIV_PMEMOBJ_BUF_PARTITION)
+	PMEM_LESS_BUCKET_HASH_KEY(hashed, fname, offset);
+#else //EVEN_BUCKET
+	
+	PMEM_HASH_KEY(hashed, offset, name_hash, pmw->PMEM_N_BUCKETS);
+#endif
+
+	//Why new implement: 
+	//Old implement problems: 
+	//+ lock on phashlist not the bucket
+	//+ Complicated check multi writer on the same bucket
+	//New implement:
+	//+ Use the bucket's locks
+	//+ Once a write acquire a bucket's lock, it handle the write as the old method
+	//+ When the list is full, replace free list first
+	//+ Then release the lock
+	//+ Then handle full list without affect to the new free list
+	
+	//(1) Acquire the bucket's lock
+	//IMPORTANT: ensure only this thread can access the phashlist
+	__wt_spin_lock(session, &buf->bucket_locks[hashed]);
+	//After acquire the lock, the hashlist only has two state 	
+	TOID_ASSIGN(hash_list, (D_RW(buf->buckets)[hashed]).oid);
+	phashlist = D_RW(hash_list);
+	assert(phashlist);	
+
+	if (phashlist->state != PMEM_LIST_FILLING && 
+			phashlist->state != PMEM_LIST_FREE) {
+		printf("PMEM_ERROR, state ERROR in pm_buf_write_with_flusher() \n");
+		assert(0);
+	}
+
+	pdata = buf->p_align;
+
+	//DEBUG for checksum error when overwrite the old image on disk
+	WT_BLOCK_HEADER *blk, swap;	
+	uint32_t page_checksum;
+	uint32_t page_checksum_prev;
+	uint32_t blk_checksum;
+	
+	page_checksum_prev = __wt_checksum(src_data, size);
+	blk = WT_BLOCK_HEADER_REF(src_data);
+	__wt_block_header_byteswap_copy(blk, &swap);
+
+	blk_checksum = swap.checksum;
+	page_checksum = __wt_checksum((void*)src_data, size);
+
+	printf("======== DAT in pmem_buf_write, file %s offset %zu checksum %u page_checksum_prev %u blk_checksum %u page_checksum %u size %zu hash_list id %zu hashed %zu \n ", fname, offset, checksum, page_checksum_prev, blk_checksum, page_checksum, size, phashlist->list_id, hashed);
+
+	//(2) search in the hashed list for a first FREE block to write on 
+	pfree_block = NULL;
+	for (i = 0; i < phashlist->max_pages; i++) {
+
+		pfree_block = D_RW(D_RW(phashlist->arr)[i]);
+		if (pfree_block->state == PMEM_FREE_BLOCK) {
+			//found!
+			break;	
+		}
+		else if(pfree_block->state == PMEM_IN_USED_BLOCK) {
+			if (pfree_block->disk_off == offset &&
+					pfree_block->name_hash ==  name_hash) {
+				//overwrite the old page
+				pmemobj_memset_persist(pop, pdata + pfree_block->pmemaddr, 0, pfree_block->max_size); 
+				pmemobj_memcpy_persist(pop, pdata + pfree_block->pmemaddr, src_data, page_size); 
+#if defined (UNIV_PMEMOBJ_BUF_STAT)
+				++buf->bucket_stats[hashed].n_overwrites;
+#endif
+				//update size is necessary in WT
+				if( size != pfree_block->size){
+					printf("PMEM_WARN: overwrite on the same offset %zu but differs size old: %zu new: %zu \n", offset, pfree_block->size, size);
+				}
+				pfree_block->size = size;
+
+				__wt_spin_unlock(session, &buf->bucket_locks[hashed]);
+				return PMEM_SUCCESS;
+			}
+		}
+		//next block
+	}//end for search for the first FREE block
+
+	if ( i == phashlist->max_pages ) {
+		//the current list is full
+		printf("PMEM_ERROR: logical error in pm_buf_write()\n");
+		assert(0);
+	}
+
+	// (3) At this point, we get the free block, write data to this block
+	assert(pfree_block);
+	assert(pfree_block->state == PMEM_FREE_BLOCK);
+
+	pfree_block->disk_off = offset;
+	strcpy(pfree_block->file_name, fname);
+	pfree_block->name_hash = name_hash;
+	pfree_block->size = size;
+	pfree_block->state = PMEM_IN_USED_BLOCK;
+
+	//this set is useful for the first write (PMEM_LIST_FREE -> PMEM_LIST_FILLING)
+	phashlist->state = PMEM_LIST_FILLING;
+
+	pmemobj_memset_persist(pop, pdata + pfree_block->pmemaddr, 0, pfree_block->max_size); 
+	pmemobj_memcpy_persist(pop, pdata + pfree_block->pmemaddr, src_data, size); 
+
+#if defined (UNIV_PMEMOBJ_BUF_STAT)
+	++buf->bucket_stats[hashed].n_writes;
+#endif 
+	//handle hash_list, 
+
+	++(phashlist->cur_pages);
+
+// HANDLE FULL LIST ////////////////////////////////////////////////////////////
+	if (phashlist->cur_pages >= phashlist->max_pages * pmw->PMEM_BUF_FLUSH_PCT) {
+		/*    (4) Handle free list*/
+get_free_list:
+		//Get a free list from the free pool
+		pmemobj_rwlock_wrlock(pop, &(D_RW(buf->free_pool)->lock));
+
+		TOID(PMEM_BUF_BLOCK_LIST) first_list = POBJ_LIST_FIRST (&(D_RW(buf->free_pool)->head));
+		if (D_RW(buf->free_pool)->cur_lists == 0 ||
+				TOID_IS_NULL(first_list) ) {
+			pthread_t tid;
+			tid = pthread_self();
+			printf("PMEM_INFO: thread %zu free_pool->cur_lists = %zu, the first list is NULL? %d the free list is empty, sleep then retry..\n", tid, D_RO(buf->free_pool)->cur_lists, TOID_IS_NULL(first_list));
+			pmemobj_rwlock_unlock(pop, &(D_RW(buf->free_pool)->lock));
+			__wt_cond_wait(session, buf->free_pool_cond, 0, NULL);
+
+			goto get_free_list;
+		}
+		//Get the free list at HEAD of the free pool
+		POBJ_LIST_REMOVE(pop, &D_RW(buf->free_pool)->head, first_list, list_entries);
+		D_RW(buf->free_pool)->cur_lists--;
+		pmemobj_rwlock_unlock(pop, &(D_RW(buf->free_pool)->lock));
+
+		assert(!TOID_IS_NULL(first_list));
+
+		D_RW(first_list)->hashed_id = hashed;
+
+		//Asign linked-list refs, swap the first_list with the hash_list
+		TOID_ASSIGN(D_RW(buf->buckets)[hashed], first_list.oid);
+		TOID_ASSIGN( D_RW(first_list)->next_list, hash_list.oid);
+		TOID_ASSIGN( D_RW(hash_list)->prev_list, first_list.oid);
+		//Right after the swaping finish, we can release the bucket's lock
+		__wt_spin_unlock(session, &pmw->pbuf->bucket_locks[hashed]);
+
+		/*    (5) assign the phashlist to the Flusher*/
+		pm_buf_assign_flusher(pmw, phashlist);
+	}//end if handle full list
+	else {
+		__wt_spin_unlock(session, &pmw->pbuf->bucket_locks[hashed]);
 	}
 
 	return PMEM_SUCCESS;
