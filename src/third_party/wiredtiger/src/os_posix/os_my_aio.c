@@ -456,7 +456,22 @@ check_seg:
 		//(2.2) Assign data in slot
 		
 		off_t offset = (off_t) pblock->disk_off;
+#if defined (CHECKSUM_DEBUG)
+		uint32_t checksum_tem, checksum2;
+		uint32_t checksum1 = pblock->checksum;
+		//Recompute the checksum of the data block in pmem
+		WT_BLOCK_HEADER *blk;
 
+		blk = WT_BLOCK_HEADER_REF(pdata + pblock->pmemaddr);
+		checksum_tem = blk->checksum;
+		blk->checksum = 0;
+		checksum2 = __wt_checksum(pdata + pblock->pmemaddr, pblock->size);
+		blk->checksum = checksum_tem;
+
+		if (checksum1 != checksum2){
+			printf("CHECKSUM ERROR #3 (io_submit): offset %zu size %zu flush checksum1 %u differs to propagating checksum2 %u, blk->checksum %u\n", offset, pblock->size, checksum1, checksum2, checksum_tem);
+		}
+#endif //CHECKSUM_DEBUG
 		slot->is_reserved = true;
 		slot->is_aio_completed = false;
 		//slot->reservation_time = time(NULL);
@@ -768,6 +783,7 @@ void handle_AIO_seg_complete(
 	WT_FH ** fh_arr;
 	WT_FH* fh_cur;
 	uint32_t i, fh_i, fh_cnt;
+	int ret;
 	ulint slot_i;
 	ulint slots_per_seg;
 	Slot* slot;
@@ -812,7 +828,23 @@ void handle_AIO_seg_complete(
 			fh_arr[fh_i] = fh_cur;
 			fh_cnt++;
 		}
+#if defined (CHECKSUM_DEBUG)
+		PMEM_BUF_BLOCK* pblock;
+		uint32_t checksum_tem, checksum2;
+		WT_BLOCK_HEADER *blk;
 
+		pblock = (PMEM_BUF_BLOCK*) slot->m1;
+		uint32_t checksum1 = pblock->checksum;
+		blk = WT_BLOCK_HEADER_REF(slot->buf);
+		checksum_tem = blk->checksum;
+		blk->checksum = 0;
+		checksum2 = __wt_checksum(slot->buf, pblock->size);
+		blk->checksum = checksum_tem;
+		if (checksum1 != checksum2){
+			printf("CHECKSUM ERROR #4 (AIO finished): offset %zu size %zu flush checksum1 %u differs to propagating checksum2 %u, blk->checksum %u\n", slot->offset, pblock->size, checksum1, checksum2, checksum_tem);
+		}
+
+#endif
 		slot->is_reserved = false;
 		slot->is_aio_completed = false;
 		slot->ret = 0;
@@ -830,6 +862,15 @@ void handle_AIO_seg_complete(
 		//__wt_fsync(session, fh_arr[fh_i], true);
 		__wt_fsync(session, fh_arr[fh_i], false);
 	}
+
+	//This loop just decrease the fh->ref to balance __wt_open() / __wt_close()
+	slot_i = seg_idx * slots_per_seg;
+	for (i = 0; i < plist->max_pages; ++i, ++slot_i) {
+		slot = &aio->slots[slot_i];
+		ret = __wt_close(session, &slot->file);
+		slot->file = NULL;
+	}
+
 	//(4) free allocate 
 	free (fh_arr);
 	fh_arr = NULL;

@@ -763,7 +763,7 @@ retry:
 	blk_checksum = swap.checksum;
 	page_checksum = __wt_checksum((void*)src_data, size);
 
-	printf("======== DAT in pmem_buf_write, file %s offset %zu checksum %u page_checksum_prev %u blk_checksum %u page_checksum %u size %zu hash_list id %zu hashed %zu \n ", fname, offset, checksum, page_checksum_prev, blk_checksum, page_checksum, size, phashlist->list_id, hashed);
+	//printf("======== DAT in pmem_buf_write, file %s offset %zu checksum %u page_checksum_prev %u blk_checksum %u page_checksum %u size %zu hash_list id %zu hashed %zu \n ", fname, offset, checksum, page_checksum_prev, blk_checksum, page_checksum, size, phashlist->list_id, hashed);
 
 	//(1) search in the hashed list for a first FREE block to write on 
 	for (i = 0; i < phashlist->max_pages; i++) {
@@ -903,6 +903,7 @@ pm_buf_write_with_flusher(
 	}
 
 	if (pmw->pbuf->page_size < size){
+		printf("PMEM_WARN: DAT OVERSIZE write, offset %zu checksum %u size %zu \n", offset, checksum, size);
 		return PMEM_ERROR;
 	}	
 
@@ -978,7 +979,9 @@ pm_buf_write_with_flusher(
 	blk_checksum = swap.checksum;
 	page_checksum = __wt_checksum((void*)src_data, size);
 
+#if defined (CHECKSUM_DEBUG)
 	printf("======== DAT in pmem_buf_write, file %s offset %zu checksum %u page_checksum_prev %u blk_checksum %u page_checksum %u size %zu hash_list id %zu hashed %zu \n ", fname, offset, checksum, page_checksum_prev, blk_checksum, page_checksum, size, phashlist->list_id, hashed);
+#endif
 
 	//(2) search in the hashed list for a first FREE block to write on 
 	pfree_block = NULL;
@@ -1020,6 +1023,8 @@ pm_buf_write_with_flusher(
 	// (3) At this point, we get the free block, write data to this block
 	assert(pfree_block);
 	assert(pfree_block->state == PMEM_FREE_BLOCK);
+	
+	pfree_block->checksum = checksum;
 
 	pfree_block->disk_off = offset;
 	strcpy(pfree_block->file_name, fname);

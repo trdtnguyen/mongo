@@ -274,8 +274,10 @@ __wt_block_read_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 	//skip read metadata file
 	const PMEM_BUF_BLOCK* pblock =
 		pm_buf_read(conn->pmw, block->fh->name, block->fh->name_hash, offset, size, buf->mem);
-	//if (strstr(block->fh->name, "ycsb") != NULL && pblock!=NULL )
-	//	printf("pm_buf_read file %s offset %zu size %zu result %d\n", block->fh->name, offset, (size_t)size, (pblock!=NULL));
+//#if defined(CHECKSUM_DEBUG)
+//	if (strstr(block->fh->name, "ycsb") != NULL && pblock!=NULL )
+//		printf("pm_buf_read file %s offset %zu size %zu result %d\n", block->fh->name, offset, (size_t)size, (pblock!=NULL));
+//#endif
 	if (pblock == NULL){
 		WT_RET(__wt_read(session, block->fh, offset, size, buf->mem));
 	}
@@ -291,11 +293,22 @@ __wt_block_read_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 	 */
 	blk = WT_BLOCK_HEADER_REF(buf->mem);
 	__wt_block_header_byteswap_copy(blk, &swap);
-#if defined(UNIV_PMEMOBJ_BUF)
+#if defined(CHECKSUM_DEBUG)
 		//Check the first read from disk checksum number
-	uint32_t page_checksum2 = __wt_checksum(buf->mem, size);
+	ulint hashed;
+	uint32_t checksum_tem;
+	uint32_t page_checksum_tem;
+	checksum_tem = blk->checksum;
+	blk->checksum = 0;
+	page_checksum_tem = __wt_checksum(buf->mem, size);
+	blk->checksum = checksum_tem;
+
+	 //PMEM_HASH_KEY(hashed, offset, block->fh->name_hash, conn->pmw->PMEM_N_BUCKETS);
+	 PMEM_WRAPPER* pmw = conn->pmw;
+	 PMEM_HASH_KEY(hashed, offset, block->fh->name_hash, pmw->PMEM_N_BUCKETS);
+	 //hashed = ((offset  +  block->fh->name_hash ) / 4096) % pmw->PMEM_N_BUCKETS;
 	if (strstr(block->fh->name, "ycsb") != 0)
-		printf("DAT pm_buf_read file %s offset %zu checksum %u blk->checksum %u swap.checksum %u page_checksum %u size %zu is read from pmem %d\n", block->fh->name, offset, checksum, blk->checksum, swap.checksum, page_checksum2, (size_t)size, (pblock != NULL));
+		printf("DAT pm_buf_read file %s offset %zu checksum %u blk->checksum %u swap.checksum %u page_checksume %u size %zu hashed %zu is read from pmem %d\n", block->fh->name, offset, checksum, blk->checksum, swap.checksum, page_checksum_tem, (size_t)size, hashed, (pblock != NULL));
 #endif
 	if (swap.checksum == checksum) {
 		blk->checksum = 0;

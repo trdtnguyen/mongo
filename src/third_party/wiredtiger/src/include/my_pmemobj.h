@@ -29,6 +29,8 @@ typedef off_t wt_off_t;
 #define PMEM_MAX_FILES 1000
 #define PMEM_MAX_FILE_NAME_LENGTH 10000
 #define PMEM_HASH_MASK 1653893711
+//#define PMEM_MAX_RANGE 1048576 //2^20, used for hashed
+#define PMEM_MAX_RANGE 4194304 //2^22, used for hashed
 
 #define PMEM_LONG_DURATION 1000000
 
@@ -338,7 +340,8 @@ struct list_constr_args{
  * */
 struct __pmem_buf_block_t{
 	PMEMrwlock					lock; //this lock protects remain properties
-
+	//For debug checksum
+	uint32_t					checksum;
 	off_t						disk_off; //offset on-disk page
 	size_t						max_size;
 	size_t						size;
@@ -747,10 +750,11 @@ hash_f1(
 
 //hashed = ((key2 << 20) + key1 + key2) ^ PMEM_HASH_MASK
 //hashed = ((key2 / 4096) +  (key1 << 20)) % n
+//hashed = ((key2 + key 1) / 4096) % n
 
 /*Evenly distributed map that one space_id evenly distribute across buckets*/
 #define PMEM_HASH_KEY(hashed, key1, key2, n) do {\
-	hashed = ((key2  +  key1 ) / 4096) % n;\
+	hashed = (key1 / (PMEM_MAX_RANGE / n) + key2) % n;\
 }while(0)
 
 #define FOLD(out, a, b) do {\
