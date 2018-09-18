@@ -2784,7 +2784,8 @@ wiredtiger_open(const char *home, WT_EVENT_HANDLER *event_handler,
 #endif  //defined(UNIV_PMEMOBJ_BUF_PARTITION)
 
 	//(3) init PM, create flusher threads inside pm_wrapper_buf_alloc_or_open()
-	ret  = pm_wrapper_buf_alloc_or_open(gb_pmw, buf_size, 32*1024);
+	//ret  = pm_wrapper_buf_alloc_or_open(gb_pmw, buf_size, 32*1024);
+	ret  = pm_wrapper_buf_alloc_or_open(gb_pmw, buf_size, PMEM_MAX_PAGE_SIZE);
 	printf("After pm_wrapper_buf_alloc_or_open() ret %d\n", ret);
 
 	if (ret != PMEM_SUCCESS) {

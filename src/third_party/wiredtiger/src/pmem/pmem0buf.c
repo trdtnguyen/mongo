@@ -312,6 +312,8 @@ pm_pop_buf_alloc(
 
 	pbuf->is_async_only = false;
 
+	pbuf->max_offset = 0;
+
 	pbuf->data = pm_pop_alloc_bytes(pop, align_size);
 	//align the pmem address for DIRECT_IO
 	p = (char*) (pmemobj_direct(pbuf->data));
@@ -638,7 +640,7 @@ PMEM_BUF* pm_pop_get_buf(PMEMobjpool* pop) {
 @param[in] page_size
  * */
 int
-pm_buf_write_with_flusher_old(
+pm_buf_write_with_flusher_old2(
 		   	PMEM_WRAPPER*	pmw,
 			const char*		fname,
 		   	uint64_t		name_hash,
@@ -886,6 +888,10 @@ retry:
 	return PMEM_SUCCESS;
 }
 
+/*
+ * write page flush from DRAM to NVM
+ * similar with pm_buf_write_with_fluser but merge overlap range
+ * */
 int
 pm_buf_write_with_flusher(
 		   	PMEM_WRAPPER*	pmw,
@@ -966,6 +972,7 @@ pm_buf_write_with_flusher(
 
 	pdata = buf->p_align;
 
+#if defined (CHECKSUM_DEBUG)
 	//DEBUG for checksum error when overwrite the old image on disk
 	WT_BLOCK_HEADER *blk, swap;	
 	uint32_t page_checksum;
@@ -979,7 +986,219 @@ pm_buf_write_with_flusher(
 	blk_checksum = swap.checksum;
 	page_checksum = __wt_checksum((void*)src_data, size);
 
+	printf("======== DAT in pmem_buf_write, file %s offset %zu checksum %u page_checksum_prev %u blk_checksum %u page_checksum %u size %zu hash_list id %zu hashed %zu \n ", fname, offset, checksum, page_checksum_prev, blk_checksum, page_checksum, size, phashlist->list_id, hashed);
+#endif
+	// (2) search for the FREE block to write on, if overlap occur, invalid previous  write 
+	ulint i_free = 0;
+	bool is_first_free = true;
+	PMEM_BUF_BLOCK* pcurblock;
+
+	for (i = 0; i < phashlist->max_pages; i++) {
+		pcurblock = D_RW(D_RW(phashlist->arr)[i]);
+		if(pcurblock->state == PMEM_IN_USED_BLOCK){
+			//Check for the overlap
+			if  ( (name_hash == pcurblock->name_hash) &&
+				  ((offset <= pcurblock->disk_off &&
+				  pcurblock->disk_off < offset + (off_t) size) ||
+				   (offset >= pcurblock->disk_off && 
+				  offset < pcurblock->disk_off + (off_t) pcurblock->size))
+				  ){
 #if defined (CHECKSUM_DEBUG)
+				printf("=== OVERLAP at index %zu of list %zu hash_id %zu file %s offset %zu size %zu checksum %u pre_off %zu pre_size %zu pre_checksum %u \n",
+						i, phashlist->list_id, hashed, fname, offset, size, checksum, pcurblock->disk_off, pcurblock->size, pcurblock->checksum);
+#endif
+				//overlapse, invalid the old write
+				pcurblock->state = PMEM_FREE_BLOCK;
+				pmemobj_memset_persist(pop, pdata + pcurblock->pmemaddr, 0, pcurblock->size); 
+				pcurblock->size = 0;
+				pcurblock->checksum = 0;
+
+				--(phashlist->cur_pages);
+			} 
+			// no overlapse, just skip
+		}
+		else if (pcurblock->state == PMEM_FREE_BLOCK &&
+				is_first_free){
+			i_free = i; // save the index of the first free block
+			is_first_free = false;
+		}
+	} //end for loop of merge range
+	
+	// (3) At this point, we get the free block, write data to this block
+	pfree_block = D_RW(D_RW(phashlist->arr)[i_free]);
+
+	assert(pfree_block);
+	assert(pfree_block->state == PMEM_FREE_BLOCK);
+
+	pfree_block->checksum = checksum;
+
+	pfree_block->disk_off = offset;
+	strcpy(pfree_block->file_name, fname);
+	pfree_block->name_hash = name_hash;
+	pfree_block->size = size;
+	pfree_block->state = PMEM_IN_USED_BLOCK;
+
+	phashlist->state = PMEM_LIST_FILLING;
+	
+#if defined (CHECKSUM_DEBUG)
+	//update the max_offset
+	if (buf->max_offset < offset)
+		buf->max_offset = offset;
+#endif
+
+	pmemobj_memset_persist(pop, pdata + pfree_block->pmemaddr, 0, pfree_block->max_size); 
+	pmemobj_memcpy_persist(pop, pdata + pfree_block->pmemaddr, src_data, size); 
+
+#if defined (UNIV_PMEMOBJ_BUF_STAT)
+	++buf->bucket_stats[hashed].n_writes;
+#endif 
+	//handle hash_list, 
+
+	++(phashlist->cur_pages);
+
+// HANDLE FULL LIST ////////////////////////////////////////////////////////////
+	if (phashlist->cur_pages >= phashlist->max_pages * pmw->PMEM_BUF_FLUSH_PCT) {
+		/*    (4) Handle free list*/
+get_free_list:
+		//Get a free list from the free pool
+		pmemobj_rwlock_wrlock(pop, &(D_RW(buf->free_pool)->lock));
+
+		TOID(PMEM_BUF_BLOCK_LIST) first_list = POBJ_LIST_FIRST (&(D_RW(buf->free_pool)->head));
+		if (D_RW(buf->free_pool)->cur_lists == 0 ||
+				TOID_IS_NULL(first_list) ) {
+			pthread_t tid;
+			tid = pthread_self();
+			printf("PMEM_INFO: thread %zu free_pool->cur_lists = %zu, the first list is NULL? %d the free list is empty, sleep then retry..\n", tid, D_RO(buf->free_pool)->cur_lists, TOID_IS_NULL(first_list));
+			pmemobj_rwlock_unlock(pop, &(D_RW(buf->free_pool)->lock));
+			__wt_cond_wait(session, buf->free_pool_cond, 0, NULL);
+
+			goto get_free_list;
+		}
+		//Get the free list at HEAD of the free pool
+		POBJ_LIST_REMOVE(pop, &D_RW(buf->free_pool)->head, first_list, list_entries);
+		D_RW(buf->free_pool)->cur_lists--;
+		pmemobj_rwlock_unlock(pop, &(D_RW(buf->free_pool)->lock));
+
+		assert(!TOID_IS_NULL(first_list));
+
+		D_RW(first_list)->hashed_id = hashed;
+
+		//Asign linked-list refs, swap the first_list with the hash_list
+		TOID_ASSIGN(D_RW(buf->buckets)[hashed], first_list.oid);
+		TOID_ASSIGN( D_RW(first_list)->next_list, hash_list.oid);
+		TOID_ASSIGN( D_RW(hash_list)->prev_list, first_list.oid);
+		//Right after the swaping finish, we can release the bucket's lock
+		__wt_spin_unlock(session, &pmw->pbuf->bucket_locks[hashed]);
+
+		/*    (5) assign the phashlist to the Flusher*/
+		pm_buf_assign_flusher(pmw, phashlist);
+	}//end if handle full list
+	else {
+		__wt_spin_unlock(session, &pmw->pbuf->bucket_locks[hashed]);
+	}
+
+	return PMEM_SUCCESS;
+}
+
+/*
+ * This version is for MongoDB
+ * hash by range
+ * overlap range bug remain
+ * */
+int
+pm_buf_write_with_flusher_old1(
+		   	PMEM_WRAPPER*	pmw,
+			const char*		fname,
+		   	uint64_t		name_hash,
+		   	off_t			offset,
+		   	uint32_t		checksum,
+		   	size_t			size,
+		   	byte*			src_data)
+{
+	
+	if (strstr (fname, "ycsb") == NULL  
+			) {
+		return PMEM_ERROR;
+	}
+
+	if (pmw->pbuf->page_size < size){
+		printf("PMEM_WARN: DAT OVERSIZE write, offset %zu checksum %u size %zu \n", offset, checksum, size);
+		return PMEM_ERROR;
+	}	
+
+	if (offset == 0) {
+		return pm_buf_write_first_page(pmw, fname, name_hash, offset, checksum, size, src_data);
+
+	}
+
+	WT_SESSION_IMPL *session = pmw->session;
+	PMEM_BUF*		buf = pmw->pbuf;
+	PMEMobjpool*	pop = pmw->pop;
+
+	ulint hashed;
+	ulint i;
+
+	TOID(PMEM_BUF_BLOCK_LIST) hash_list;
+	PMEM_BUF_BLOCK_LIST* phashlist;
+
+	PMEM_BUF_BLOCK* pfree_block;
+	byte* pdata;
+	//page_id_t page_id;
+	size_t page_size;
+
+	assert(buf);
+	assert(src_data);
+	//NOTE: this size may not fixed in WT
+	page_size = size;
+
+#if defined (UNIV_PMEMOBJ_BUF_PARTITION)
+	PMEM_LESS_BUCKET_HASH_KEY(hashed, fname, offset);
+#else //EVEN_BUCKET
+	
+	PMEM_HASH_KEY(hashed, offset, name_hash, pmw->PMEM_N_BUCKETS);
+#endif
+
+	//Why new implement: 
+	//Old implement problems: 
+	//+ lock on phashlist not the bucket
+	//+ Complicated check multi writer on the same bucket
+	//New implement:
+	//+ Use the bucket's locks
+	//+ Once a write acquire a bucket's lock, it handle the write as the old method
+	//+ When the list is full, replace free list first
+	//+ Then release the lock
+	//+ Then handle full list without affect to the new free list
+	
+	//(1) Acquire the bucket's lock
+	//IMPORTANT: ensure only this thread can access the phashlist
+	__wt_spin_lock(session, &buf->bucket_locks[hashed]);
+	//After acquire the lock, the hashlist only has two state 	
+	TOID_ASSIGN(hash_list, (D_RW(buf->buckets)[hashed]).oid);
+	phashlist = D_RW(hash_list);
+	assert(phashlist);	
+
+	if (phashlist->state != PMEM_LIST_FILLING && 
+			phashlist->state != PMEM_LIST_FREE) {
+		printf("PMEM_ERROR, state ERROR in pm_buf_write_with_flusher() \n");
+		assert(0);
+	}
+
+	pdata = buf->p_align;
+
+#if defined (CHECKSUM_DEBUG)
+	//DEBUG for checksum error when overwrite the old image on disk
+	WT_BLOCK_HEADER *blk, swap;	
+	uint32_t page_checksum;
+	uint32_t page_checksum_prev;
+	uint32_t blk_checksum;
+	
+	page_checksum_prev = __wt_checksum(src_data, size);
+	blk = WT_BLOCK_HEADER_REF(src_data);
+	__wt_block_header_byteswap_copy(blk, &swap);
+
+	blk_checksum = swap.checksum;
+	page_checksum = __wt_checksum((void*)src_data, size);
+
 	printf("======== DAT in pmem_buf_write, file %s offset %zu checksum %u page_checksum_prev %u blk_checksum %u page_checksum %u size %zu hash_list id %zu hashed %zu \n ", fname, offset, checksum, page_checksum_prev, blk_checksum, page_checksum, size, phashlist->list_id, hashed);
 #endif
 
@@ -1006,6 +1225,7 @@ pm_buf_write_with_flusher(
 					printf("PMEM_WARN: overwrite on the same offset %zu but differs size old: %zu new: %zu \n", offset, pfree_block->size, size);
 				}
 				pfree_block->size = size;
+				pfree_block->checksum = checksum;
 
 				__wt_spin_unlock(session, &buf->bucket_locks[hashed]);
 				return PMEM_SUCCESS;
@@ -1034,6 +1254,12 @@ pm_buf_write_with_flusher(
 
 	//this set is useful for the first write (PMEM_LIST_FREE -> PMEM_LIST_FILLING)
 	phashlist->state = PMEM_LIST_FILLING;
+	
+#if defined (CHECKSUM_DEBUG)
+	//update the max_offset
+	if (buf->max_offset < offset)
+		buf->max_offset = offset;
+#endif
 
 	pmemobj_memset_persist(pop, pdata + pfree_block->pmemaddr, 0, pfree_block->max_size); 
 	pmemobj_memcpy_persist(pop, pdata + pfree_block->pmemaddr, src_data, size); 
@@ -1805,6 +2031,7 @@ pm_buf_read(
 	ulint hashed;
 	//int i;
 	size_t i;
+	size_t count;
 
 	//currently, we only read blocks from ycsb data
 	if ( strstr(fname, "ycsb") == NULL){
@@ -1911,9 +2138,14 @@ pm_buf_read(
 			printf("===> ERROR read NULL list \n");
 			assert(0);
 		}
-		for (i = 0; i < D_RO(cur_list)->cur_pages; i++) {
+		count = 0;
+		//for (i = 0; i < D_RO(cur_list)->cur_pages; i++) {
+		for (i = 0; i < D_RO(cur_list)->max_pages; i++) {
 			//accepted states: PMEM_IN_USED_BLOCK, PMEM_IN_FLUSH_BLOCK
 			//if ( D_RO(D_RO(plist->arr)[i])->state != PMEM_FREE_BLOCK &&
+			if (D_RO(D_RO(D_RO(cur_list)->arr)[i])->state == PMEM_FREE_BLOCK){
+				continue;
+			}
 			if (	D_RO(D_RO(D_RO(cur_list)->arr)[i]) != NULL && 
 					D_RO(D_RO(D_RO(cur_list)->arr)[i])->state != PMEM_FREE_BLOCK &&
 					D_RO(D_RO(D_RO(cur_list)->arr)[i])->disk_off == offset &&
@@ -1951,6 +2183,11 @@ pm_buf_read(
 
 				//return pblock;
 				return D_RO(D_RO(D_RO(cur_list)->arr)[i]);
+			}
+			++count;
+			if (count == D_RO(cur_list)->cur_pages){
+				//we end the loop early
+				break;
 			}
 		}//end for
 

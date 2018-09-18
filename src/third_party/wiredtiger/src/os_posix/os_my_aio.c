@@ -467,7 +467,7 @@ check_seg:
 		blk->checksum = 0;
 		checksum2 = __wt_checksum(pdata + pblock->pmemaddr, pblock->size);
 		blk->checksum = checksum_tem;
-
+		//Check the checksum right before io_submit()
 		if (checksum1 != checksum2){
 			printf("CHECKSUM ERROR #3 (io_submit): offset %zu size %zu flush checksum1 %u differs to propagating checksum2 %u, blk->checksum %u\n", offset, pblock->size, checksum1, checksum2, checksum_tem);
 		}
@@ -832,7 +832,8 @@ void handle_AIO_seg_complete(
 		PMEM_BUF_BLOCK* pblock;
 		uint32_t checksum_tem, checksum2;
 		WT_BLOCK_HEADER *blk;
-
+	
+		//Check the checksum after io_submit()
 		pblock = (PMEM_BUF_BLOCK*) slot->m1;
 		uint32_t checksum1 = pblock->checksum;
 		blk = WT_BLOCK_HEADER_REF(slot->buf);

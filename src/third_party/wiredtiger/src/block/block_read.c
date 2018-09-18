@@ -293,6 +293,8 @@ __wt_block_read_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 	 */
 	blk = WT_BLOCK_HEADER_REF(buf->mem);
 	__wt_block_header_byteswap_copy(blk, &swap);
+
+#if defined(UNIV_PMEMOBJ_BUF)
 #if defined(CHECKSUM_DEBUG)
 		//Check the first read from disk checksum number
 	ulint hashed;
@@ -308,7 +310,8 @@ __wt_block_read_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 	 PMEM_HASH_KEY(hashed, offset, block->fh->name_hash, pmw->PMEM_N_BUCKETS);
 	 //hashed = ((offset  +  block->fh->name_hash ) / 4096) % pmw->PMEM_N_BUCKETS;
 	if (strstr(block->fh->name, "ycsb") != 0)
-		printf("DAT pm_buf_read file %s offset %zu checksum %u blk->checksum %u swap.checksum %u page_checksume %u size %zu hashed %zu is read from pmem %d\n", block->fh->name, offset, checksum, blk->checksum, swap.checksum, page_checksum_tem, (size_t)size, hashed, (pblock != NULL));
+		printf("DAT pm_buf_read file %s offset %zu checksum %u blk->checksum %u swap.checksum %u page_checksume %u size %zu hashed %zu is read from pmem %d max_offset %zu pblock->checksum %u\n", block->fh->name, offset, checksum, blk->checksum, swap.checksum, page_checksum_tem, (size_t)size, hashed, (pblock != NULL), pmw->pbuf->max_offset, (pblock != NULL ? pblock->checksum : 0));
+#endif
 #endif
 	if (swap.checksum == checksum) {
 		blk->checksum = 0;
@@ -326,13 +329,13 @@ __wt_block_read_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 		}
 
 #if defined(UNIV_PMEMOBJ_BUF)
-	printf("CHECKSUM ERROR #1: read size %"PRIu32" offset %zu checksum %"PRIu32" page_checksum %"PRIu32" is read from pmem %d\n",
+	printf("CHECKSUM ERROR #1: read size %"PRIu32" offset %zu checksum %"PRIu32" page_checksum %"PRIu32" is read from pmem %d \n",
 			size, offset, checksum, page_checksum, (pblock != NULL));
 		//because WT update blk->checksum when write a block to disk, it get the different checksum value every next __wt_checksum()
 		//So, it's ok if swap.checksum == checksum (we read what we written)
-		__wt_page_header_byteswap(buf->mem);
-		return (0);
-	//assert(0);
+		//__wt_page_header_byteswap(buf->mem);
+		//return (0);
+	assert(0);
 #endif
 		if (!F_ISSET(session, WT_SESSION_QUIET_CORRUPT_FILE))
 			__wt_errx(session,
@@ -354,7 +357,7 @@ __wt_block_read_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 		WT_IGNORE_RET(
 		    __wt_bm_corrupt_dump(session, buf, offset, size, checksum));
 #if defined(UNIV_PMEMOBJ_BUF)
-	printf("CHECKSUM ERROR #2: read size %"PRIu32" offset %zu checksum %"PRIu32" swap.checksum %"PRIu32" is read from pmem %d\n",
+	printf("CHECKSUM ERROR #2: read size %"PRIu32" offset %zu checksum %"PRIu32" swap.checksum %"PRIu32" is read from pmem %d \n",
 			size, offset, checksum, swap.checksum, (pblock != NULL));
 	assert(0);
 #endif

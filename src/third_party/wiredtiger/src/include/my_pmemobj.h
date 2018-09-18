@@ -29,8 +29,11 @@ typedef off_t wt_off_t;
 #define PMEM_MAX_FILES 1000
 #define PMEM_MAX_FILE_NAME_LENGTH 10000
 #define PMEM_HASH_MASK 1653893711
-//#define PMEM_MAX_RANGE 1048576 //2^20, used for hashed
-#define PMEM_MAX_RANGE 4194304 //2^22, used for hashed
+//#define PMEM_MAX_RANGE 4194304 //2^22, used for hashed
+//#define PMEM_MAX_RANGE 17179869184 //2^34, used for hashed
+#define PMEM_MAX_RANGE 34359738368 //2^35, used for hashed
+
+#define PMEM_MAX_PAGE_SIZE 32*1024
 
 #define PMEM_LONG_DURATION 1000000
 
@@ -434,6 +437,8 @@ struct __pmem_buf {
 	PMEM_FLUSHER* flusher;	
 
 	PMEM_FILE_MAP* filemap;
+
+	off_t max_offset; //max offset used in hash by range
 };
 
 
@@ -535,7 +540,16 @@ pm_buf_single_list_init(
 		const size_t				n,
 		const size_t				page_size);
 int
-pm_buf_write_with_flusher_old(
+pm_buf_write_with_flusher_old2(
+		   	PMEM_WRAPPER*	pmw,
+			const char*		fname,
+		   	uint64_t		name_hash,
+		   	off_t			offset,
+		   	uint32_t		checksum,
+		   	size_t			size,
+		   	byte*			src_data);
+int
+pm_buf_write_with_flusher_old1(
 		   	PMEM_WRAPPER*	pmw,
 			const char*		fname,
 		   	uint64_t		name_hash,
