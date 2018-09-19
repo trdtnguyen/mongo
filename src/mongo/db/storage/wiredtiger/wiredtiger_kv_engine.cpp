@@ -496,6 +496,7 @@ WiredTigerKVEngine::WiredTigerKVEngine(const std::string& canonicalName,
 	ss << "pmem=(pmem_pool_size=" << wiredTigerGlobalOptions.pmem_pool_size;
 	ss << ",pmem_buf_size=" << wiredTigerGlobalOptions.pmem_buf_size ;
 	ss << ",pmem_buf_n_buckets=" << wiredTigerGlobalOptions.pmem_buf_n_buckets;
+	ss << ",pmem_buf_max_range=" << wiredTigerGlobalOptions.pmem_buf_max_range;
 	ss << ",pmem_buf_bucket_size=" << wiredTigerGlobalOptions.pmem_buf_bucket_size;
 	ss << ",pmem_buf_flush_pct=" << wiredTigerGlobalOptions.pmem_buf_flush_pct;
 	ss << ",pmem_n_flush_threads=" << wiredTigerGlobalOptions.pmem_n_flush_threads;

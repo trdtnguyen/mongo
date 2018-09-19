@@ -213,6 +213,7 @@ struct __pmem_wrapper {
 
 	uint64_t PMEM_N_FLUSH_THREADS;
 	uint64_t PMEM_FLUSHER_WAKE_THRESHOLD;
+	uint64_t PMEM_BUF_MAX_RANGE;
 #if defined (UNIV_PMEMOBJ_BUF_PARTITION)
 	uint64_t PMEM_N_BUCKET_BITS; //this value is computed from PMEM_N_BUCKETS
 	uint64_t PMEM_N_SPACE_BITS;
@@ -765,10 +766,11 @@ hash_f1(
 //hashed = ((key2 << 20) + key1 + key2) ^ PMEM_HASH_MASK
 //hashed = ((key2 / 4096) +  (key1 << 20)) % n
 //hashed = ((key2 + key 1) / 4096) % n
+//hashed = (key1 / (PMEM_MAX_RANGE / n) + key2) % n;
 
 /*Evenly distributed map that one space_id evenly distribute across buckets*/
-#define PMEM_HASH_KEY(hashed, key1, key2, n) do {\
-	hashed = (key1 / (PMEM_MAX_RANGE / n) + key2) % n;\
+#define PMEM_HASH_KEY(hashed, key1, key2, range, n) do {\
+	hashed = (key1 / (range / n) + key2) % n;\
 }while(0)
 
 #define FOLD(out, a, b) do {\

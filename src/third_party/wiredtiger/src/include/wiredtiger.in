@@ -2271,10 +2271,14 @@ struct __wt_connection {
 	 * \c 256.}
 	 * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_buf_flush_pct, a., an
 	 * integer between 1 and 16384; default \c 1.}
-	 * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_buf_n_buckets, number of buckets
-	 * in the partition., an integer between 1 and 16384; default \c 128.}
-	 * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_buf_size, size of the pmem
-	 * buffer in MB., an integer between 1 and 16384; default \c 256.}
+	 * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_buf_max_range, max range for the
+	 * hash function., an integer between 32769 and 34359734368; default \c
+	 * 4194304.}
+	 * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_buf_n_buckets, number
+	 * of buckets in the partition., an integer between 1 and 16384; default
+	 * \c 128.}
+	 * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_buf_size, size of the
+	 * pmem buffer in MB., an integer between 1 and 16384; default \c 256.}
 	 * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_flush_threshold, If the pointer
 	 * assign in thread flusher larger than this threshold.  The batch flush
 	 * is trigger\, from 1 to 64\, default is number of flusher threads -
@@ -2958,6 +2962,8 @@ struct __wt_connection {
  * default \c 256.}
  * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_buf_flush_pct, a., an
  * integer between 1 and 16384; default \c 1.}
+ * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_buf_max_range, max range for the hash
+ * function., an integer between 32769 and 34359734368; default \c 4194304.}
  * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_buf_n_buckets, number of buckets in the
  * partition., an integer between 1 and 16384; default \c 128.}
  * @config{&nbsp;&nbsp;&nbsp;&nbsp;pmem_buf_size, size of the pmem buffer in

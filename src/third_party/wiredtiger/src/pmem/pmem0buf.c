@@ -697,7 +697,7 @@ pm_buf_write_with_flusher_old2(
 #else //EVEN_BUCKET
 	//TODO: implement fold() in MongoDB
 	
-	PMEM_HASH_KEY(hashed, offset, name_hash, pmw->PMEM_N_BUCKETS);
+	PMEM_HASH_KEY(hashed, offset, name_hash, pmw->PMEM_BUF_MAX_RANGE, pmw->PMEM_N_BUCKETS);
 	//hashed = ((offset / 4096) +  (name_hash << 20)) % pmw->PMEM_N_BUCKETS;
 #endif
 
@@ -890,7 +890,11 @@ retry:
 
 /*
  * write page flush from DRAM to NVM
- * similar with pm_buf_write_with_fluser but merge overlap range
+ * similar with pm_buf_write_with_flusher but invalid overlap range
+ * new write (offset1, size1)
+ * OVERLAP condition: If exist (offset2, size2) in the current list that:
+ * (offset1 <= offset2 && offset2 < offset1 + size1) OR
+ * (offset1 >= offset2 && offset1 < offset2 + size2)
  * */
 int
 pm_buf_write_with_flusher(
@@ -942,7 +946,7 @@ pm_buf_write_with_flusher(
 	PMEM_LESS_BUCKET_HASH_KEY(hashed, fname, offset);
 #else //EVEN_BUCKET
 	
-	PMEM_HASH_KEY(hashed, offset, name_hash, pmw->PMEM_N_BUCKETS);
+	PMEM_HASH_KEY(hashed, offset, name_hash, pmw->PMEM_BUF_MAX_RANGE, pmw->PMEM_N_BUCKETS);
 #endif
 
 	//Why new implement: 
@@ -1155,7 +1159,7 @@ pm_buf_write_with_flusher_old1(
 	PMEM_LESS_BUCKET_HASH_KEY(hashed, fname, offset);
 #else //EVEN_BUCKET
 	
-	PMEM_HASH_KEY(hashed, offset, name_hash, pmw->PMEM_N_BUCKETS);
+	PMEM_HASH_KEY(hashed, offset, name_hash, pmw->PMEM_BUF_MAX_RANGE, pmw->PMEM_N_BUCKETS);
 #endif
 
 	//Why new implement: 
@@ -1795,10 +1799,10 @@ pm_handle_finished_list_with_flusher(
 
 	pmemobj_rwlock_wrlock(pop, &pflush_list->lock);
 
-//#if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
+#if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
 	printf("\n [*****[6]  BEGIN pm_handle_finished_list_with_flusher list %zu hashed_id %d\n",
 			pflush_list->list_id, pflush_list->hashed_id);
-//#endif
+#endif
 	//Now all pages in this list are persistent in disk
 
 	//(1) Reset blocks in the list
@@ -1873,9 +1877,9 @@ pm_handle_finished_list_with_flusher(
 	//os_event_set(buf->free_pool_event);
 	__wt_cond_signal(session, buf->free_pool_cond);
 
-//#if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
+#if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
 	printf("\n *****[6] END finish AIO List %zu, cur free pool size %zu]\n", pflush_list->list_id, pfree_pool->cur_lists);
-//#endif
+#endif
 	pmemobj_rwlock_unlock(pop, &pfree_pool->lock);
 	//the list has some unfinished aio	
 	pmemobj_rwlock_unlock(pop, &pflush_list->lock);
@@ -2109,7 +2113,7 @@ pm_buf_read(
 	PMEM_LESS_BUCKET_HASH_KEY(hashed, fname, offset);
 #else //EVEN_BUCKET
 	//PMEM_HASH_KEY(hashed, page_id.fold(), pmw->PMEM_N_BUCKETS);
-	PMEM_HASH_KEY(hashed, offset, name_hash, pmw->PMEM_N_BUCKETS);
+	PMEM_HASH_KEY(hashed, offset, name_hash, pmw->PMEM_BUF_MAX_RANGE, pmw->PMEM_N_BUCKETS);
 #endif
 
 	TOID_ASSIGN(cur_list, (D_RO(buf->buckets)[hashed]).oid);

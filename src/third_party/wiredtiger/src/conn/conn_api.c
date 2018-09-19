@@ -2724,16 +2724,21 @@ wiredtiger_open(const char *home, WT_EVENT_HANDLER *event_handler,
 
 	//Get remain config values
 	//Since pmem_buf_size is in MB, we need to convert to B
+	printf("\n===== PMEM config values =====\n");
+
 	ret = __wt_config_subgets(session, &cval, "pmem_buf_size", &sval);
 	if (ret == 0) {
 		if (sval.val)
 			gb_pmw->PMEM_BUF_SIZE = buf_size = sval.val * 1024 * 1024;
+		printf("pmem_buf_size = %zu\n", gb_pmw->PMEM_BUF_SIZE);
 	} else
 		WT_ERR_NOTFOUND_OK(ret);
+
 	ret = __wt_config_subgets(session, &cval, "pmem_buf_n_buckets", &sval);
 	if (ret == 0) {
 		if (sval.val)
 			gb_pmw->PMEM_N_BUCKETS = sval.val;
+		printf("pmem_buf_n_buckets = %zu\n", gb_pmw->PMEM_N_BUCKETS);
 	} else
 		WT_ERR_NOTFOUND_OK(ret);
 
@@ -2741,13 +2746,23 @@ wiredtiger_open(const char *home, WT_EVENT_HANDLER *event_handler,
 	if (ret == 0) {
 		if (sval.val)
 			gb_pmw->PMEM_BUCKET_SIZE = sval.val;
+		printf("pmem_buf_bucket_size = %zu\n", gb_pmw->PMEM_BUCKET_SIZE);
 	} else
 		WT_ERR_NOTFOUND_OK(ret);
 	
+	ret = __wt_config_subgets(session, &cval, "pmem_buf_max_range", &sval);
+	if (ret == 0) {
+		if (sval.val)
+			gb_pmw->PMEM_BUF_MAX_RANGE = sval.val;
+		printf("pmem_buf_max_range = %zu\n", gb_pmw->PMEM_BUF_MAX_RANGE);
+	} else
+		WT_ERR_NOTFOUND_OK(ret);
+
 	ret = __wt_config_subgets(session, &cval, "pmem_buf_flush_pct", &sval);
 	if (ret == 0) {
 		if (sval.val)
 			gb_pmw->PMEM_BUF_FLUSH_PCT = sval.val;
+		printf("pmem_buf_flush_pct = %f\n", gb_pmw->PMEM_BUF_FLUSH_PCT);
 	} else
 		WT_ERR_NOTFOUND_OK(ret);
 
@@ -2755,6 +2770,7 @@ wiredtiger_open(const char *home, WT_EVENT_HANDLER *event_handler,
 	if (ret == 0) {
 		if (sval.val)
 			gb_pmw->PMEM_N_FLUSH_THREADS = sval.val;
+		printf("pmem_n_flush_threads = %zu\n", gb_pmw->PMEM_N_FLUSH_THREADS);
 	} else
 		WT_ERR_NOTFOUND_OK(ret);
 
@@ -2762,8 +2778,11 @@ wiredtiger_open(const char *home, WT_EVENT_HANDLER *event_handler,
 	if (ret == 0) {
 		if (sval.val)
 			gb_pmw->PMEM_FLUSHER_WAKE_THRESHOLD = sval.val;
+		printf("pmem_flush_threshold = %zu\n", gb_pmw->PMEM_FLUSHER_WAKE_THRESHOLD);
 	} else
 		WT_ERR_NOTFOUND_OK(ret);
+
+	printf("===== END PMEM config values =====\n");
 #if defined(UNIV_PMEMOBJ_BUF_PARTITION)
 	//This value is computed from PMEM_N_BUCKETS
 	gb_pmw->PMEM_N_BUCKET_BITS = log2(gb_pmw->PMEM_N_BUCKETS);

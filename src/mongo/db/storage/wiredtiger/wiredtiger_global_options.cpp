@@ -87,6 +87,11 @@ Status WiredTigerGlobalOptions::add(moe::OptionSection* options) {
                                         moe::Long,
                                         "the maximum delay flush calls to weakup the flushing threads in FLUSHER; "
                                         "default is number of flush threads - 2").validRange(1,62);
+    wiredTigerOptions.addOptionChaining("storage.wiredTiger.engineConfig.pmem_buf_max_range",
+                                        "pmem_buf_max_range",
+                                        moe::Long,
+                                        "max range for hash function; "
+                                        "default is 4194304 (2^22)");
 #endif //UNIV_PMEMOBJ_BUF
 
 #if defined (UNIV_PMEMOBJ_BUF_PARTITION)
@@ -219,6 +224,11 @@ Status WiredTigerGlobalOptions::store(const moe::Environment& params,
         wiredTigerGlobalOptions.pmem_flush_threshold =
             params["storage.wiredTiger.engineConfig.pmem_flush_threshold"].as<long>();
         log() << "pmem_flush_threshold: " << wiredTigerGlobalOptions.pmem_flush_threshold;
+    }
+    if (params.count("storage.wiredTiger.engineConfig.pmem_buf_max_range")) {
+        wiredTigerGlobalOptions.pmem_buf_max_range =
+            params["storage.wiredTiger.engineConfig.pmem_buf_max_range"].as<long>();
+        log() << "pmem_buf_max_range: " << wiredTigerGlobalOptions.pmem_buf_max_range;
     }
 #endif
 #if defined (UNIV_PMEMOBJ_BUF_PARTITION)
