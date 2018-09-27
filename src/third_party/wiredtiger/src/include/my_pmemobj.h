@@ -209,6 +209,7 @@ struct __pmem_wrapper {
 
 	uint64_t PMEM_N_BUCKETS;
 	uint64_t PMEM_BUCKET_SIZE;
+	uint64_t PMEM_CKPT_BLOCK_SIZE;
 	double PMEM_BUF_FLUSH_PCT;
 
 	uint64_t PMEM_N_FLUSH_THREADS;

@@ -417,6 +417,9 @@ connection_runtime_config = [
         Config('pmem_buf_max_range', '4194304', r'''
             max range for the hash function''',
             min='32769', max='34359734368'),
+        Config('pmem_ckpt_block_size', '8388608', r'''
+            max range for the hash function''',
+            min='32769', max='34359734368'),
         Config('pmem_buf_flush_pct', '1', r'''
             a''',
             min='1', max='16384'),

@@ -69,6 +69,7 @@ public:
 	size_t pmem_buf_bucket_size;
 	size_t pmem_buf_size;
 	size_t pmem_buf_max_range;
+	size_t pmem_ckpt_block_size;
 	size_t pmem_buf_n_buckets;
 	double pmem_buf_flush_pct;
 

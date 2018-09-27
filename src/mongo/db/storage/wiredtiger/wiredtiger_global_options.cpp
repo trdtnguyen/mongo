@@ -92,6 +92,11 @@ Status WiredTigerGlobalOptions::add(moe::OptionSection* options) {
                                         moe::Long,
                                         "max range for hash function; "
                                         "default is 4194304 (2^22)");
+    wiredTigerOptions.addOptionChaining("storage.wiredTiger.engineConfig.pmem_ckpt_block_size",
+                                        "pmem_ckpt_block_size",
+                                        moe::Long,
+                                        "size of the huge block in pmem for ckpt snapshot; "
+                                        "default is 8388608 (2^23)");
 #endif //UNIV_PMEMOBJ_BUF
 
 #if defined (UNIV_PMEMOBJ_BUF_PARTITION)
@@ -229,6 +234,11 @@ Status WiredTigerGlobalOptions::store(const moe::Environment& params,
         wiredTigerGlobalOptions.pmem_buf_max_range =
             params["storage.wiredTiger.engineConfig.pmem_buf_max_range"].as<long>();
         log() << "pmem_buf_max_range: " << wiredTigerGlobalOptions.pmem_buf_max_range;
+    }
+    if (params.count("storage.wiredTiger.engineConfig.pmem_ckpt_block_size")) {
+        wiredTigerGlobalOptions.pmem_ckpt_block_size =
+            params["storage.wiredTiger.engineConfig.pmem_ckpt_block_size"].as<long>();
+        log() << "pmem_ckpt_block_size: " << wiredTigerGlobalOptions.pmem_ckpt_block_size;
     }
 #endif
 #if defined (UNIV_PMEMOBJ_BUF_PARTITION)

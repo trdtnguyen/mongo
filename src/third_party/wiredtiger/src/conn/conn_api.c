@@ -2758,6 +2758,14 @@ wiredtiger_open(const char *home, WT_EVENT_HANDLER *event_handler,
 	} else
 		WT_ERR_NOTFOUND_OK(ret);
 
+	ret = __wt_config_subgets(session, &cval, "pmem_ckpt_block_size", &sval);
+	if (ret == 0) {
+		if (sval.val)
+			gb_pmw->PMEM_CKPT_BLOCK_SIZE = sval.val;
+		printf("pmem_ckpt_block_size = %zu\n", gb_pmw->PMEM_CKPT_BLOCK_SIZE);
+	} else
+		WT_ERR_NOTFOUND_OK(ret);
+
 	ret = __wt_config_subgets(session, &cval, "pmem_buf_flush_pct", &sval);
 	if (ret == 0) {
 		if (sval.val)

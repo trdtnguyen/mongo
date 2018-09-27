@@ -307,7 +307,7 @@ __wt_block_read_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 
 	 //PMEM_HASH_KEY(hashed, offset, block->fh->name_hash, conn->pmw->PMEM_N_BUCKETS);
 	 PMEM_WRAPPER* pmw = conn->pmw;
-	 PMEM_HASH_KEY(hashed, offset, block->fh->name_hash, pmw->PMEM_N_BUCKETS);
+	 PMEM_HASH_KEY(hashed, offset, block->fh->name_hash, pmw->PMEM_BUF_MAX_RANGE, pmw->PMEM_N_BUCKETS);
 	 //hashed = ((offset  +  block->fh->name_hash ) / 4096) % pmw->PMEM_N_BUCKETS;
 	if (strstr(block->fh->name, "ycsb") != 0)
 		printf("DAT pm_buf_read file %s offset %zu checksum %u blk->checksum %u swap.checksum %u page_checksume %u size %zu hashed %zu is read from pmem %d max_offset %zu pblock->checksum %u\n", block->fh->name, offset, checksum, blk->checksum, swap.checksum, page_checksum_tem, (size_t)size, hashed, (pblock != NULL), pmw->pbuf->max_offset, (pblock != NULL ? pblock->checksum : 0));

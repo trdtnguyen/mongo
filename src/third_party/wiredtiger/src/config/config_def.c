@@ -129,6 +129,9 @@ static const WT_CONFIG_CHECK
 	    NULL, "min=1,max=16384",
 	    NULL, 0 },
 	{ "pmem_buf_size", "int", NULL, "min=1,max=16384", NULL, 0 },
+	{ "pmem_ckpt_block_size", "int",
+	    NULL, "min=32769,max=34359734368",
+	    NULL, 0 },
 	{ "pmem_flush_threshold", "int",
 	    NULL, "min=1,max=64",
 	    NULL, 0 },
@@ -210,7 +213,7 @@ static const WT_CONFIG_CHECK confchk_WT_CONNECTION_reconfigure[] = {
 	    confchk_wiredtiger_open_operation_tracking_subconfigs, 2 },
 	{ "pmem", "category",
 	    NULL, NULL,
-	    confchk_wiredtiger_open_pmem_subconfigs, 10 },
+	    confchk_wiredtiger_open_pmem_subconfigs, 11 },
 	{ "shared_cache", "category",
 	    NULL, NULL,
 	    confchk_wiredtiger_open_shared_cache_subconfigs, 5 },
@@ -899,7 +902,7 @@ static const WT_CONFIG_CHECK confchk_wiredtiger_open[] = {
 	    confchk_wiredtiger_open_operation_tracking_subconfigs, 2 },
 	{ "pmem", "category",
 	    NULL, NULL,
-	    confchk_wiredtiger_open_pmem_subconfigs, 10 },
+	    confchk_wiredtiger_open_pmem_subconfigs, 11 },
 	{ "readonly", "boolean", NULL, NULL, NULL, 0 },
 	{ "session_max", "int", NULL, "min=1", NULL, 0 },
 	{ "session_scratch_max", "int", NULL, NULL, NULL, 0 },
@@ -1005,7 +1008,7 @@ static const WT_CONFIG_CHECK confchk_wiredtiger_open_all[] = {
 	    confchk_wiredtiger_open_operation_tracking_subconfigs, 2 },
 	{ "pmem", "category",
 	    NULL, NULL,
-	    confchk_wiredtiger_open_pmem_subconfigs, 10 },
+	    confchk_wiredtiger_open_pmem_subconfigs, 11 },
 	{ "readonly", "boolean", NULL, NULL, NULL, 0 },
 	{ "session_max", "int", NULL, "min=1", NULL, 0 },
 	{ "session_scratch_max", "int", NULL, NULL, NULL, 0 },
@@ -1108,7 +1111,7 @@ static const WT_CONFIG_CHECK confchk_wiredtiger_open_basecfg[] = {
 	    confchk_wiredtiger_open_operation_tracking_subconfigs, 2 },
 	{ "pmem", "category",
 	    NULL, NULL,
-	    confchk_wiredtiger_open_pmem_subconfigs, 10 },
+	    confchk_wiredtiger_open_pmem_subconfigs, 11 },
 	{ "readonly", "boolean", NULL, NULL, NULL, 0 },
 	{ "session_max", "int", NULL, "min=1", NULL, 0 },
 	{ "session_scratch_max", "int", NULL, NULL, NULL, 0 },
@@ -1209,7 +1212,7 @@ static const WT_CONFIG_CHECK confchk_wiredtiger_open_usercfg[] = {
 	    confchk_wiredtiger_open_operation_tracking_subconfigs, 2 },
 	{ "pmem", "category",
 	    NULL, NULL,
-	    confchk_wiredtiger_open_pmem_subconfigs, 10 },
+	    confchk_wiredtiger_open_pmem_subconfigs, 11 },
 	{ "readonly", "boolean", NULL, NULL, NULL, 0 },
 	{ "session_max", "int", NULL, "min=1", NULL, 0 },
 	{ "session_scratch_max", "int", NULL, NULL, NULL, 0 },
@@ -1309,12 +1312,12 @@ static const WT_CONFIG_ENTRY config_entries[] = {
 	  "lsm_merge=true,operation_tracking=(enabled=false,path=\".\"),"
 	  "pmem=(pmem_buf_bucket_size=256,pmem_buf_flush_pct=1,"
 	  "pmem_buf_max_range=4194304,pmem_buf_n_buckets=128,"
-	  "pmem_buf_size=256,pmem_flush_threshold=6,"
-	  "pmem_n_flush_threads=256,pmem_n_space_bits=5,"
-	  "pmem_page_per_bucket_bits=10,pmem_pool_size=8096),"
-	  "shared_cache=(chunk=10MB,name=,quota=0,reserve=0,size=500MB),"
-	  "statistics=none,statistics_log=(json=false,on_close=false,"
-	  "sources=,timestamp=\"%b %d %H:%M:%S\",wait=0),"
+	  "pmem_buf_size=256,pmem_ckpt_block_size=8388608,"
+	  "pmem_flush_threshold=6,pmem_n_flush_threads=256,"
+	  "pmem_n_space_bits=5,pmem_page_per_bucket_bits=10,"
+	  "pmem_pool_size=8096),shared_cache=(chunk=10MB,name=,quota=0,"
+	  "reserve=0,size=500MB),statistics=none,statistics_log=(json=false"
+	  ",on_close=false,sources=,timestamp=\"%b %d %H:%M:%S\",wait=0),"
 	  "timing_stress_for_test=,verbose=",
 	  confchk_WT_CONNECTION_reconfigure, 24
 	},
@@ -1558,15 +1561,16 @@ static const WT_CONFIG_ENTRY config_entries[] = {
 	  "mmap=true,multiprocess=false,operation_tracking=(enabled=false,"
 	  "path=\".\"),pmem=(pmem_buf_bucket_size=256,pmem_buf_flush_pct=1,"
 	  "pmem_buf_max_range=4194304,pmem_buf_n_buckets=128,"
-	  "pmem_buf_size=256,pmem_flush_threshold=6,"
-	  "pmem_n_flush_threads=256,pmem_n_space_bits=5,"
-	  "pmem_page_per_bucket_bits=10,pmem_pool_size=8096),readonly=false"
-	  ",session_max=100,session_scratch_max=2MB,"
-	  "session_table_cache=true,shared_cache=(chunk=10MB,name=,quota=0,"
-	  "reserve=0,size=500MB),statistics=none,statistics_log=(json=false"
-	  ",on_close=false,path=\".\",sources=,timestamp=\"%b %d %H:%M:%S\""
-	  ",wait=0),timing_stress_for_test=,transaction_sync=(enabled=false"
-	  ",method=fsync),use_environment=true,use_environment_priv=false,"
+	  "pmem_buf_size=256,pmem_ckpt_block_size=8388608,"
+	  "pmem_flush_threshold=6,pmem_n_flush_threads=256,"
+	  "pmem_n_space_bits=5,pmem_page_per_bucket_bits=10,"
+	  "pmem_pool_size=8096),readonly=false,session_max=100,"
+	  "session_scratch_max=2MB,session_table_cache=true,"
+	  "shared_cache=(chunk=10MB,name=,quota=0,reserve=0,size=500MB),"
+	  "statistics=none,statistics_log=(json=false,on_close=false,"
+	  "path=\".\",sources=,timestamp=\"%b %d %H:%M:%S\",wait=0),"
+	  "timing_stress_for_test=,transaction_sync=(enabled=false,"
+	  "method=fsync),use_environment=true,use_environment_priv=false,"
 	  "verbose=,write_through=",
 	  confchk_wiredtiger_open, 46
 	},
@@ -1589,15 +1593,16 @@ static const WT_CONFIG_ENTRY config_entries[] = {
 	  "mmap=true,multiprocess=false,operation_tracking=(enabled=false,"
 	  "path=\".\"),pmem=(pmem_buf_bucket_size=256,pmem_buf_flush_pct=1,"
 	  "pmem_buf_max_range=4194304,pmem_buf_n_buckets=128,"
-	  "pmem_buf_size=256,pmem_flush_threshold=6,"
-	  "pmem_n_flush_threads=256,pmem_n_space_bits=5,"
-	  "pmem_page_per_bucket_bits=10,pmem_pool_size=8096),readonly=false"
-	  ",session_max=100,session_scratch_max=2MB,"
-	  "session_table_cache=true,shared_cache=(chunk=10MB,name=,quota=0,"
-	  "reserve=0,size=500MB),statistics=none,statistics_log=(json=false"
-	  ",on_close=false,path=\".\",sources=,timestamp=\"%b %d %H:%M:%S\""
-	  ",wait=0),timing_stress_for_test=,transaction_sync=(enabled=false"
-	  ",method=fsync),use_environment=true,use_environment_priv=false,"
+	  "pmem_buf_size=256,pmem_ckpt_block_size=8388608,"
+	  "pmem_flush_threshold=6,pmem_n_flush_threads=256,"
+	  "pmem_n_space_bits=5,pmem_page_per_bucket_bits=10,"
+	  "pmem_pool_size=8096),readonly=false,session_max=100,"
+	  "session_scratch_max=2MB,session_table_cache=true,"
+	  "shared_cache=(chunk=10MB,name=,quota=0,reserve=0,size=500MB),"
+	  "statistics=none,statistics_log=(json=false,on_close=false,"
+	  "path=\".\",sources=,timestamp=\"%b %d %H:%M:%S\",wait=0),"
+	  "timing_stress_for_test=,transaction_sync=(enabled=false,"
+	  "method=fsync),use_environment=true,use_environment_priv=false,"
 	  "verbose=,version=(major=0,minor=0),write_through=",
 	  confchk_wiredtiger_open_all, 47
 	},
@@ -1618,15 +1623,16 @@ static const WT_CONFIG_ENTRY config_entries[] = {
 	  "mmap=true,multiprocess=false,operation_tracking=(enabled=false,"
 	  "path=\".\"),pmem=(pmem_buf_bucket_size=256,pmem_buf_flush_pct=1,"
 	  "pmem_buf_max_range=4194304,pmem_buf_n_buckets=128,"
-	  "pmem_buf_size=256,pmem_flush_threshold=6,"
-	  "pmem_n_flush_threads=256,pmem_n_space_bits=5,"
-	  "pmem_page_per_bucket_bits=10,pmem_pool_size=8096),readonly=false"
-	  ",session_max=100,session_scratch_max=2MB,"
-	  "session_table_cache=true,shared_cache=(chunk=10MB,name=,quota=0,"
-	  "reserve=0,size=500MB),statistics=none,statistics_log=(json=false"
-	  ",on_close=false,path=\".\",sources=,timestamp=\"%b %d %H:%M:%S\""
-	  ",wait=0),timing_stress_for_test=,transaction_sync=(enabled=false"
-	  ",method=fsync),verbose=,version=(major=0,minor=0),write_through=",
+	  "pmem_buf_size=256,pmem_ckpt_block_size=8388608,"
+	  "pmem_flush_threshold=6,pmem_n_flush_threads=256,"
+	  "pmem_n_space_bits=5,pmem_page_per_bucket_bits=10,"
+	  "pmem_pool_size=8096),readonly=false,session_max=100,"
+	  "session_scratch_max=2MB,session_table_cache=true,"
+	  "shared_cache=(chunk=10MB,name=,quota=0,reserve=0,size=500MB),"
+	  "statistics=none,statistics_log=(json=false,on_close=false,"
+	  "path=\".\",sources=,timestamp=\"%b %d %H:%M:%S\",wait=0),"
+	  "timing_stress_for_test=,transaction_sync=(enabled=false,"
+	  "method=fsync),verbose=,version=(major=0,minor=0),write_through=",
 	  confchk_wiredtiger_open_basecfg, 41
 	},
 	{ "wiredtiger_open_usercfg",
@@ -1646,15 +1652,16 @@ static const WT_CONFIG_ENTRY config_entries[] = {
 	  "mmap=true,multiprocess=false,operation_tracking=(enabled=false,"
 	  "path=\".\"),pmem=(pmem_buf_bucket_size=256,pmem_buf_flush_pct=1,"
 	  "pmem_buf_max_range=4194304,pmem_buf_n_buckets=128,"
-	  "pmem_buf_size=256,pmem_flush_threshold=6,"
-	  "pmem_n_flush_threads=256,pmem_n_space_bits=5,"
-	  "pmem_page_per_bucket_bits=10,pmem_pool_size=8096),readonly=false"
-	  ",session_max=100,session_scratch_max=2MB,"
-	  "session_table_cache=true,shared_cache=(chunk=10MB,name=,quota=0,"
-	  "reserve=0,size=500MB),statistics=none,statistics_log=(json=false"
-	  ",on_close=false,path=\".\",sources=,timestamp=\"%b %d %H:%M:%S\""
-	  ",wait=0),timing_stress_for_test=,transaction_sync=(enabled=false"
-	  ",method=fsync),verbose=,write_through=",
+	  "pmem_buf_size=256,pmem_ckpt_block_size=8388608,"
+	  "pmem_flush_threshold=6,pmem_n_flush_threads=256,"
+	  "pmem_n_space_bits=5,pmem_page_per_bucket_bits=10,"
+	  "pmem_pool_size=8096),readonly=false,session_max=100,"
+	  "session_scratch_max=2MB,session_table_cache=true,"
+	  "shared_cache=(chunk=10MB,name=,quota=0,reserve=0,size=500MB),"
+	  "statistics=none,statistics_log=(json=false,on_close=false,"
+	  "path=\".\",sources=,timestamp=\"%b %d %H:%M:%S\",wait=0),"
+	  "timing_stress_for_test=,transaction_sync=(enabled=false,"
+	  "method=fsync),verbose=,write_through=",
 	  confchk_wiredtiger_open_usercfg, 40
 	},
 	{ NULL, NULL, NULL, 0 }
