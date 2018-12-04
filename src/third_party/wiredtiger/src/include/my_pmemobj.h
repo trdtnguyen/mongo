@@ -405,12 +405,16 @@ struct __pmem_buf {
 	PMEMoid  data; //pmem data
 	//char* p_align; //align 
 	byte* p_align; //align 
+	
+	bool is_capture_ckpt;	
+	byte* p_ckpt_align;
+	TOID(PMEM_BUF_BLOCK) ckpt_block;
 
 	bool is_new;
 	TOID(PMEM_BUF_FREE_POOL) free_pool;
 	TOID_ARRAY(TOID(PMEM_BUF_BLOCK_LIST)) buckets;
 	TOID(PMEM_BUF_BLOCK_LIST) spec_list; //list of page 0 used in recovery
-
+	
 	FILE* deb_file;
 #if defined(UNIV_PMEMOBJ_BUF_STAT)
 	PMEM_BUCKET_STAT* bucket_stats; //array of bucket stats

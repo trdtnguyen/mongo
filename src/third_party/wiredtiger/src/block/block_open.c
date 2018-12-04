@@ -352,9 +352,11 @@ __desc_read(WT_SESSION_IMPL *session, WT_BLOCK *block)
 #if defined (UNIV_PMEMOBJ_BUF)
 	const PMEM_BUF_BLOCK* pblock =
 		pm_buf_read(conn->pmw, block->fh->name, block->fh->name_hash, (off_t)0, (size_t)block->allocsize, buf->mem);
+#if defined (UNIV_PMEMOBJ_BUF_DEBUG)
 	if (strstr(block->fh->name,"ycsb") != NULL)
 		printf("Inside __desc_read, pm_buf_read file %s offset 0 size %zu result %d\n",
 				block->fh->name, (size_t)block->allocsize, (pblock!=NULL));
+#endif //UNIV_PMEMOBJ_BUF_DEBUG
 	if (pblock == NULL) {
 		//Read the block from disk as in the original
 		WT_ERR(__wt_read(session,

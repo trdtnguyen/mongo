@@ -395,7 +395,10 @@ __ckpt_process(WT_SESSION_IMPL *session, WT_BLOCK *block, WT_CKPT *ckptbase)
 	WT_DECL_RET;
 	uint64_t ckpt_size;
 	bool deleting, fatal, locked;
-
+#if defined (UNIV_PMEMOBJ_BUF)
+	WT_CONNECTION_IMPL *conn;
+	conn = S2C(session);
+#endif
 	ci = &block->live;
 	fatal = locked = false;
 
@@ -470,10 +473,13 @@ __ckpt_process(WT_SESSION_IMPL *session, WT_BLOCK *block, WT_CKPT *ckptbase)
 	__wt_block_extlist_free(session, &ci->ckpt_alloc);
 	__wt_block_extlist_free(session, &ci->ckpt_discard);
 //tdnguyen debug
+#if defined (UNIV_PMEMOBJ_BUF)
 	if ( strstr(block->name, "ycsb") != NULL){
 		printf("checkpoint for data ....\n");
 	}
-
+	PMEM_WRAPPER*   pmw = conn->pmw;
+	pmw->pbuf->is_capture_ckpt = true;
+#endif
 	/*
 	 * To delete a checkpoint, we'll need checkpoint information for it and
 	 * the subsequent checkpoint into which it gets rolled; read them from

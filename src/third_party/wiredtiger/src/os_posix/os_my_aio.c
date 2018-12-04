@@ -308,9 +308,9 @@ check_seg:
 			int hashed = plist->hashed_id;
 
 			assert(hashed == pnext_list->hashed_id);
-
+#if defined (UNIV_PMEMOBJ_BUF_DEBUG)
 			printf("NNNN [3] this list %zu with hashed_id %d is waiting for the older list %zu with state %d finish propagating ... \n", plist->list_id, hashed, pnext_list->list_id, pnext_list->state);
-
+#endif //UNIV_PMEMOBJ_BUF_DEBUG
 			plist->state = PMEM_LIST_WAIT_PROP;
 
 			__wt_cond_wait(session, pmw->pbuf->prev_list_flush_conds[hashed], 0, NULL); //see pm_handle_finished_list_with_flusher 

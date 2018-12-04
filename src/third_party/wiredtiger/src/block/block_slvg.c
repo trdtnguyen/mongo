@@ -129,8 +129,10 @@ __wt_block_salvage_next(WT_SESSION_IMPL *session,
 		 * sized boundary, we'll never consider this one again.
 		 */
 #if defined (UNIV_PMEMOBJ_BUF)
+#if defined (UNIV_PMEMOBJ_BUF_DEBUG)
 		if ( strstr(block->name, "ycsb") != NULL) 
 			printf("in __wt_block_salvage_next call __wt_read for ycsb page\n");
+#endif
 #endif 
 		WT_ERR(__wt_read(
 		    session, fh, offset, (size_t)allocsize, tmp->mem));

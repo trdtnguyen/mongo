@@ -364,9 +364,9 @@ pm_buf_lists_init(
 	size_t n_pages = (total_size / page_size);
 	size_t bucket_size = pmw->PMEM_BUCKET_SIZE * page_size;
 	size_t n_pages_per_bucket = pmw->PMEM_BUCKET_SIZE;
-
-	//we need one more list for the special list
-	size_t n_lists_in_free_pool = n_pages / pmw->PMEM_BUCKET_SIZE - pmw->PMEM_N_BUCKETS - 1;
+	size_t n_lists_in_ckpt = (pmw->PMEM_CKPT_BLOCK_SIZE / page_size) / n_pages_per_bucket;
+	// # of lists in free pool = total # of lists - lists in bucket - 1 special list - # lists for checkpoint
+	size_t n_lists_in_free_pool = n_pages / pmw->PMEM_BUCKET_SIZE - pmw->PMEM_N_BUCKETS - 1 - n_lists_in_ckpt;
 
 	printf("\n\n=======> PMEM_INFO: n_pages = %zu bucket size = %f MB (%zu %zu-KB pages) n_lists in free_pool %zu\n", n_pages, bucket_size*1.0 / (1024*1024), n_pages_per_bucket, (page_size/1024), n_lists_in_free_pool);
 
@@ -534,6 +534,23 @@ pm_buf_lists_init(
 	TOID_ASSIGN(pspeclist->prev_list, OID_NULL);
 	//init pages in spec list 
 	pm_buf_single_list_init(pop, buf->spec_list, &offset, args, n_pages_per_bucket, page_size);
+
+	//(4) init the ckpt block
+	buf->is_capture_ckpt = true;
+
+	struct list_constr_args* args2 = (struct list_constr_args*) malloc(sizeof(struct list_constr_args)); 
+	args2->check = PMEM_AIO_CHECK;
+	args2->state = PMEM_FREE_BLOCK;
+	TOID_ASSIGN(args2->list, OID_NULL);
+
+	args2->size = pmw->PMEM_CKPT_BLOCK_SIZE;
+
+	args2->pmemaddr = offset;
+	offset += pmw->PMEM_CKPT_BLOCK_SIZE;
+
+	TOID_ASSIGN(args2->list, OID_NULL);
+
+	POBJ_NEW(pop, &buf->ckpt_block, PMEM_BUF_BLOCK, pm_buf_block_init, args2);
 	
 }
 
@@ -912,10 +929,6 @@ pm_buf_write_with_flusher(
 		return PMEM_ERROR;
 	}
 
-	if (pmw->pbuf->page_size < size){
-		printf("PMEM_WARN: DAT OVERSIZE write, offset %zu checksum %u size %zu \n", offset, checksum, size);
-		return PMEM_ERROR;
-	}	
 
 	if (offset == 0) {
 		return pm_buf_write_first_page(pmw, fname, name_hash, offset, checksum, size, src_data);
@@ -941,6 +954,35 @@ pm_buf_write_with_flusher(
 	assert(src_data);
 	//NOTE: this size may not fixed in WT
 	page_size = size;
+
+	if (pmw->pbuf->page_size < size){
+		//We only capture the first ckpt
+		if(pmw->pbuf->is_capture_ckpt){
+			printf("PMEM_WARN 1: WRITE ON NVM OVERSIZE write, offset %zu checksum %u size %zu \n", offset, checksum, size);
+			pmw->pbuf->is_capture_ckpt = false;
+
+			pdata = buf->p_align;
+			PMEM_BUF_BLOCK* pckpt_block;
+			pckpt_block = D_RW(pmw->pbuf->ckpt_block);
+
+			pckpt_block->checksum = checksum;
+
+			pckpt_block->disk_off = offset;
+			strcpy(pckpt_block->file_name, fname);
+			pckpt_block->name_hash = name_hash;
+			pckpt_block->size = size;
+			pckpt_block->state = PMEM_IN_USED_BLOCK;
+
+			pmemobj_memset_persist(pop, pdata + pckpt_block->pmemaddr, 0, pckpt_block->max_size); 
+			pmemobj_memcpy_persist(pop, pdata + pckpt_block->pmemaddr, src_data, size); 
+
+			return PMEM_SUCCESS;
+		}
+		else {
+			printf("PMEM_WARN 2: WRITE ON DISK OVERSIZE write, offset %zu checksum %u size %zu \n", offset, checksum, size);
+			return PMEM_ERROR;
+		}
+	}	
 
 #if defined (UNIV_PMEMOBJ_BUF_PARTITION)
 	PMEM_LESS_BUCKET_HASH_KEY(hashed, fname, offset);
@@ -1836,9 +1878,10 @@ pm_handle_finished_list_with_flusher(
 			int hashed = pprev_list->hashed_id;
 
 			assert(hashed == pflush_list->hashed_id);
-
+#if defined (UNIV_PMEMOBJ_BUF)
 			printf("NNNN [6] This list %zu with hashed_id %d signal for its prev list %zu wakeup\n",
 					pflush_list->list_id, hashed, pprev_list->list_id);
+#endif //UNIV_PMEMOBJ_BUF
 			__wt_cond_signal(session, pmw->pbuf->prev_list_flush_conds[hashed]);
 		}
 	}
@@ -2041,11 +2084,6 @@ pm_buf_read(
 	if ( strstr(fname, "ycsb") == NULL){
 		return NULL;
 	}
-	if ( pmw->pbuf->page_size < size){
-		printf("YYYY PMEM_WARN: pm read size %zu exceed block size %zu offset %zu file %s \n",
-				size, pmw->pbuf->page_size, offset, fname);
-		return NULL;
-	}
 #if defined(UNIV_PMEMOBJ_BUF_STAT)
 	ulint cur_level = 0;
 #endif
@@ -2062,6 +2100,30 @@ pm_buf_read(
 	assert(buf);
 	assert(data);	
 
+	if ( pmw->pbuf->page_size < size){
+		//we search in the ckpt block
+		PMEM_BUF_BLOCK* pckpt_block = D_RW(buf->ckpt_block);
+		if( pckpt_block->state != PMEM_FREE_BLOCK && 
+				pckpt_block->disk_off == offset &&
+				pckpt_block->name_hash == name_hash){
+		pdata = buf->p_align;
+		if (pckpt_block->size != size){
+					printf("PMEM_ERROR, request size %zu differs with the block size %zu, file %s offset %zu\n",
+							size, pckpt_block->size, fname, offset);
+					assert(0);
+		}
+				memcpy(data, pdata + pckpt_block->pmemaddr, pckpt_block->size); 
+
+		printf("PMEM_WARN 1: pm read from nvm size %zu exceed block size %zu offset %zu file %s \n",
+				size, pmw->pbuf->page_size, offset, fname);
+			return pckpt_block;
+		}
+		else {
+			printf("PMEM_WARN 2: pm read from disk size %zu exceed block size %zu offset %zu file %s \n",
+				size, pmw->pbuf->page_size, offset, fname);
+			return NULL;
+		}
+	}
 /*handle page 0
 // Note that there are two case for reading a page 0
 // Case 1: read through buffer pool (handle in this function, during the server working time)
