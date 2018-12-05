@@ -7,7 +7,9 @@
  */
 
 #include "wt_internal.h"
-
+#if defined (UNIV_PMEMOBJ_BUF)
+extern PMEM_WRAPPER* gb_pmw; //defined in conn_api.c
+#endif
 /*
  * __wt_block_truncate --
  *	Truncate the file.
@@ -339,8 +341,12 @@ __block_write_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 	/* Write the block. */
 #if defined (UNIV_PMEMOBJ_BUF)
 	//Capture this write in our PMEM_BUF
-	//ret = pm_buf_write_with_flusher(conn->pmw, fh->name, fh->name_hash, offset, align_size, buf->mem);
-	ret = pm_buf_write_with_flusher(conn->pmw, fh->name, fh->name_hash, offset, checksum, align_size, buf->mem);
+	PMEM_WRAPPER* pmw_tem = conn->pmw;
+	if (pmw_tem == NULL)
+		printf ("PMEM DEBUG conn->pmw is null\n");
+	//ret = pm_buf_write_with_flusher(conn->pmw, fh->name, fh->name_hash, offset, checksum, align_size, buf->mem);
+	//ret = pm_buf_write_with_flusher(gb_pmw, fh->name, fh->name_hash, offset, checksum, align_size, buf->mem);
+	ret = pm_buf_write_with_flusher(gb_pmw, session, fh->name, fh->name_hash, offset, checksum, align_size, buf->mem);
 	if (ret != PMEM_SUCCESS){
 		//The original
 		if ((ret =

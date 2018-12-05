@@ -95,13 +95,14 @@ hash_f1(
 int
 pm_wrapper_buf_alloc_or_open(
 		PMEM_WRAPPER*		pmw,
+		WT_SESSION_IMPL *session,
 		const size_t		buf_size,
 		const size_t		page_size)
 {
 
 	uint64_t i;
 	char sbuf[256];
-	WT_SESSION_IMPL *session = pmw->session;
+	//WT_SESSION_IMPL *session = pmw->session;
 	int ret;
 
 	/////////////////////////////////////////////////
@@ -157,7 +158,7 @@ pm_wrapper_buf_alloc_or_open(
 #endif	
 //#if defined(UNIV_PMEMOBJ_BUF_FLUSHER)
 	//init threads for handle flushing, implement in buf0flu.cc
-	pm_flusher_init(pmw, pmw->PMEM_N_FLUSH_THREADS);
+	pm_flusher_init(pmw, session, pmw->PMEM_N_FLUSH_THREADS);
 //#endif 
 #if defined (UNIV_PMEMOBJ_BUF_PARTITION_STAT)
 	pm_filemap_init(pmw->pbuf);
@@ -226,10 +227,12 @@ pm_wrapper_buf_alloc_or_open(
 /*
  * CLose/deallocate resource in DRAM
  * */
-int pm_wrapper_buf_close(PMEM_WRAPPER* pmw) {
+int 
+pm_wrapper_buf_close(PMEM_WRAPPER* pmw,
+					WT_SESSION_IMPL *session) {
 	uint64_t i;
-	WT_SESSION_IMPL *session;
-	session = pmw->session;
+	//WT_SESSION_IMPL *session;
+	//session = pmw->session;
 
 #if defined (UNIV_PMEMOBJ_BUF_PARTITION_STAT)
 	//pm_filemap_print(pmw->pbuf, pmw->pbuf->deb_file);
@@ -258,7 +261,7 @@ int pm_wrapper_buf_close(PMEM_WRAPPER* pmw) {
 
 //#if defined (UNIV_PMEMOBJ_BUF_FLUSHER)
 	//Free the flusher
-	pm_buf_flusher_close(pmw);
+	pm_buf_flusher_close(pmw, session);
 //#endif 
 
 	//The AIO
@@ -659,6 +662,7 @@ PMEM_BUF* pm_pop_get_buf(PMEMobjpool* pop) {
 int
 pm_buf_write_with_flusher_old2(
 		   	PMEM_WRAPPER*	pmw,
+			WT_SESSION_IMPL* session,
 			const char*		fname,
 		   	uint64_t		name_hash,
 		   	off_t			offset,
@@ -682,7 +686,7 @@ pm_buf_write_with_flusher_old2(
 
 	}
 
-	WT_SESSION_IMPL *session = pmw->session;
+	//WT_SESSION_IMPL *session = pmw->session;
 	PMEM_BUF*		buf = pmw->pbuf;
 	PMEMobjpool*	pop = pmw->pop;
 	//bool is_lock_free_block = false;
@@ -752,7 +756,7 @@ retry:
 			(phashlist->cur_pages >= phashlist->max_pages * pmw->PMEM_BUF_FLUSH_PCT)) {
 			pmemobj_rwlock_unlock(pop, &phashlist->lock);
 			//printf("PMEM_INFO: call pm_buf_handle_full_hashed_list during recovering, hashed = %zu list_id = %zu, cur_pages= %zu, is_flush = %d...\n", hashed, phashlist->list_id, phashlist->cur_pages, phashlist->is_flush);
-			pm_buf_handle_full_hashed_list(pmw, hashed);
+			pm_buf_handle_full_hashed_list(pmw, session, hashed);
 			goto retry;
 		}
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
@@ -886,7 +890,7 @@ retry:
 		printf("\n[1] BEGIN pm_buf_handle_full list_id %zu, hashed_id %zu\n", phashlist->list_id, hashed);
 #endif 
 		////////// THIS FUNCTION IS IMPORTANT //////////////
-		pm_buf_handle_full_hashed_list(pmw, hashed);
+		pm_buf_handle_full_hashed_list(pmw, session, hashed);
 		////////////////////////////////////////////////////
 #if defined(UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
 		printf("\n[1] END pm_buf_handle_full list_id %zu, hashed_id %zu\n", phashlist->list_id, hashed);
@@ -916,6 +920,7 @@ retry:
 int
 pm_buf_write_with_flusher(
 		   	PMEM_WRAPPER*	pmw,
+			WT_SESSION_IMPL* session,
 			const char*		fname,
 		   	uint64_t		name_hash,
 		   	off_t			offset,
@@ -935,7 +940,7 @@ pm_buf_write_with_flusher(
 
 	}
 
-	WT_SESSION_IMPL *session = pmw->session;
+	//WT_SESSION_IMPL *session = pmw->session;
 	PMEM_BUF*		buf = pmw->pbuf;
 	PMEMobjpool*	pop = pmw->pop;
 
@@ -1137,7 +1142,7 @@ get_free_list:
 		__wt_spin_unlock(session, &pmw->pbuf->bucket_locks[hashed]);
 
 		/*    (5) assign the phashlist to the Flusher*/
-		pm_buf_assign_flusher(pmw, phashlist);
+		pm_buf_assign_flusher(pmw, session, phashlist);
 	}//end if handle full list
 	else {
 		__wt_spin_unlock(session, &pmw->pbuf->bucket_locks[hashed]);
@@ -1154,6 +1159,7 @@ get_free_list:
 int
 pm_buf_write_with_flusher_old1(
 		   	PMEM_WRAPPER*	pmw,
+			WT_SESSION_IMPL* session,
 			const char*		fname,
 		   	uint64_t		name_hash,
 		   	off_t			offset,
@@ -1177,7 +1183,7 @@ pm_buf_write_with_flusher_old1(
 
 	}
 
-	WT_SESSION_IMPL *session = pmw->session;
+	//WT_SESSION_IMPL *session = pmw->session;
 	PMEM_BUF*		buf = pmw->pbuf;
 	PMEMobjpool*	pop = pmw->pop;
 
@@ -1352,7 +1358,7 @@ get_free_list:
 		__wt_spin_unlock(session, &pmw->pbuf->bucket_locks[hashed]);
 
 		/*    (5) assign the phashlist to the Flusher*/
-		pm_buf_assign_flusher(pmw, phashlist);
+		pm_buf_assign_flusher(pmw, session, phashlist);
 	}//end if handle full list
 	else {
 		__wt_spin_unlock(session, &pmw->pbuf->bucket_locks[hashed]);
@@ -1565,10 +1571,11 @@ pm_buf_flush_list(
 void
 pm_handle_finished_block(
 	   	PMEM_WRAPPER*			pmw,
+		WT_SESSION_IMPL* session,
 	   	PMEM_BUF_BLOCK*		pblock)
 {
 
-	WT_SESSION_IMPL *session = pmw->session;
+	//WT_SESSION_IMPL *session = pmw->session;
 	PMEMobjpool*		pop = pmw->pop;
 	PMEM_BUF*			buf = pmw->pbuf;
 	//bool is_lock_prev_list = false;
@@ -1589,8 +1596,6 @@ pm_handle_finished_block(
 	else
 		pflush_list->n_aio_pending--;
 
-	//printf("PMEM_DEBUG aio FINISHED slot_id = %zu n_page_requested = %zu flush_list id = %zu n_pending = %zu/%zu page_id %zu space_id %zu \n",
-	//if (pflush_list->n_aio_pending == 0) {
 	if (pflush_list->n_aio_pending + pflush_list->n_sio_pending == 0) {
 		//Now all pages in this list are persistent in disk
 		//(0) flush spaces
@@ -1635,13 +1640,11 @@ pm_handle_finished_block(
 		PMEM_BUF_FREE_POOL* pfree_pool;
 		pfree_pool = D_RW(buf->free_pool);
 
-		//printf("PMEM_DEBUG: in fil_aio_wait(), try to lock free_pool list id: %zd, cur_lists in free_pool= %zd \n", pflush_list->list_id, pfree_pool->cur_lists);
 		pmemobj_rwlock_wrlock(pop, &pfree_pool->lock);
 
 		POBJ_LIST_INSERT_TAIL(pop, &pfree_pool->head, flush_list, list_entries);
 		pfree_pool->cur_lists++;
 		//wakeup who is waitting for free_pool available
-		//os_event_set(buf->free_pool_event);
 		__wt_cond_signal(session,buf->free_pool_cond);
 
 		pmemobj_rwlock_unlock(pop, &pfree_pool->lock);
@@ -1651,69 +1654,6 @@ pm_handle_finished_block(
 	pmemobj_rwlock_unlock(pop, &pflush_list->lock);
 }
 
-/*
- *This function is called from aio complete (fil_aio_wait)
- (1) Reset the list
- (2) Flush spaces in this list
- * */
-void
-pm_handle_finished_block_no_free_pool(
-	   	PMEM_WRAPPER*			pmw,
-	   	PMEM_BUF_BLOCK*		pblock)
-{
-
-	WT_SESSION_IMPL *session = pmw->session;
-	PMEMobjpool*		pop = pmw->pop;
-	PMEM_BUF*			buf = pmw->pbuf;
-	//bool is_lock_prev_list = false;
-
-	//(1) handle the flush_list
-	TOID(PMEM_BUF_BLOCK_LIST) flush_list;
-
-	TOID_ASSIGN(flush_list, pblock->list.oid);
-	PMEM_BUF_BLOCK_LIST* pflush_list = D_RW(flush_list);
-
-	assert(pflush_list);
-	
-	//possible owners: producer (pm_buf_write), consummer (this function) threads
-	pmemobj_rwlock_wrlock(pop, &pflush_list->lock);
-	
-	if(pblock->sync)
-		pflush_list->n_sio_pending--;
-	else
-		pflush_list->n_aio_pending--;
-
-	//printf("PMEM_DEBUG aio FINISHED slot_id = %zu n_page_requested = %zu flush_list id = %zu n_pending = %zu/%zu page_id %zu space_id %zu \n",
-	//if (pflush_list->n_aio_pending == 0) {
-	if (pflush_list->n_aio_pending + pflush_list->n_sio_pending == 0) {
-		//Now all pages in this list are persistent in disk
-		//(0) flush spaces
-#if defined(UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
-		printf("finish list %zu hash_id %d \n",
-				pflush_list->list_id, pflush_list->hashed_id);
-#endif
-		//TODO: Research flush in MongoDB
-		//pm_buf_flush_spaces_in_list(pop, buf, pflush_list);
-
-		//(1) Reset blocks in the list
-		ulint i;
-		for (i = 0; i < pflush_list->max_pages; i++) {
-			D_RW(D_RW(pflush_list->arr)[i])->state = PMEM_FREE_BLOCK;
-			D_RW(D_RW(pflush_list->arr)[i])->sync = false;
-		}
-
-		pflush_list->cur_pages = 0;
-		pflush_list->state = PMEM_LIST_FREE;
-
-		//os_event_set(buf->flush_events[pflush_list->hashed_id]);
-		__wt_cond_signal(session, buf->flush_conds[pflush_list->hashed_id]);
-
-		//pflush_list->hashed_id = PMEM_ID_NONE;
-
-	}
-	//the list has some unfinished aio	
-	pmemobj_rwlock_unlock(pop, &pflush_list->lock);
-}
 
 /*
  * Handle a AIO finished block
@@ -1822,10 +1762,11 @@ pm_handle_asyn_finished_block(
 	void
 pm_handle_finished_list_with_flusher(
 		PMEM_WRAPPER*		pmw,
+		WT_SESSION_IMPL* session,
 		PMEM_BUF_BLOCK_LIST*		pflush_list)
 {
 
-	WT_SESSION_IMPL *session = pmw->session;
+	//WT_SESSION_IMPL *session = pmw->session;
 	PMEMobjpool*		pop = pmw->pop;
 	PMEM_BUF*			buf = pmw->pbuf;
 	//PMEM_FLUSHER* flusher;
@@ -1936,10 +1877,11 @@ pm_handle_finished_list_with_flusher(
 void
 pm_handle_finished_block_with_flusher(
 	   	PMEM_WRAPPER*		pmw,
+		WT_SESSION_IMPL* session,
 	   	PMEM_BUF_BLOCK*		pblock)
 {
 	
-	WT_SESSION_IMPL *session = pmw->session;
+	//WT_SESSION_IMPL *session = pmw->session;
 	PMEMobjpool*		pop = pmw->pop;
 	PMEM_BUF*			buf = pmw->pbuf;
 	//PMEM_FLUSHER* flusher;
@@ -2064,6 +2006,7 @@ pm_handle_finished_block_with_flusher(
 const PMEM_BUF_BLOCK* 
 pm_buf_read(
 		   	PMEM_WRAPPER*	pmw,
+			WT_SESSION_IMPL* session,
 			const char*		fname,
 			uint64_t		name_hash,
 		   	const off_t		offset,
@@ -2334,7 +2277,9 @@ pm_buf_read_page_zero(
  * */
 void
 pm_buf_resume_flushing(
-		PMEM_WRAPPER*			pmw){
+		PMEM_WRAPPER*			pmw,
+		WT_SESSION_IMPL* session
+		){
 	
 	PMEM_BUF*				buf = pmw->pbuf;
 
@@ -2356,7 +2301,7 @@ pm_buf_resume_flushing(
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
 			printf("\ncase 1 PMEM_RECOVERY ==> resume flushing for hashed_id %zu list_id %zu\n", i, phashlist->list_id);
 #endif
-			pm_buf_handle_full_hashed_list(pmw, i);
+			pm_buf_handle_full_hashed_list(pmw, session, i);
 		}
 
 		//(2) Check the linked-list of current list	
@@ -2371,7 +2316,7 @@ pm_buf_resume_flushing(
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
 				printf("\n\t\t case 2 PMEM_RECOVERY ==> resume flushing for linked list %zu of hashlist %zu hashed_id %zu\n", plist->list_id, phashlist->list_id, i);
 #endif
-				pm_buf_assign_flusher(pmw, plist);
+				pm_buf_assign_flusher(pmw, session, plist);
 			}
 
 			TOID_ASSIGN(cur_list, (D_RW(cur_list)->next_list).oid);
@@ -2392,9 +2337,10 @@ pm_buf_resume_flushing(
 void
 pm_buf_handle_full_hashed_list(
 		PMEM_WRAPPER*		pmw,
+		WT_SESSION_IMPL* session,
 		ulint			hashed) {
 
-	WT_SESSION_IMPL *session = pmw->session;
+	//WT_SESSION_IMPL *session = pmw->session;
 	PMEMobjpool*	pop = pmw->pop;
 	PMEM_BUF*		buf = pmw->pbuf;
 	TOID(PMEM_BUF_BLOCK_LIST) hash_list;
@@ -2410,7 +2356,7 @@ pm_buf_handle_full_hashed_list(
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
 	printf("\t[[1.1] BEGIN handle assign flusher list %zu hashed %zu ===> \n", phashlist->list_id, hashed);
 #endif
-	pm_buf_assign_flusher(pmw, phashlist);
+	pm_buf_assign_flusher(pmw, session, phashlist);
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
 	printf("\n\t[1.1] END handle assign flusher list %zu]\n", phashlist->list_id);
 #endif
@@ -2469,9 +2415,10 @@ get_free_list:
 void
 pm_buf_assign_flusher(
 		PMEM_WRAPPER*				pmw,
+		WT_SESSION_IMPL* session,
 		PMEM_BUF_BLOCK_LIST*	phashlist) {
 
-	WT_SESSION_IMPL *session = pmw->session;
+	//WT_SESSION_IMPL *session = pmw->session;
 	PMEM_BUF*				buf = pmw->pbuf;
 	//int lock_ret;
 
@@ -2565,16 +2512,18 @@ assign_worker:
 int
 pm_flusher_init(
 				PMEM_WRAPPER*		pmw, 
+				WT_SESSION_IMPL *session,
 				const size_t	size) {
-	WT_SESSION_IMPL *session;
+	//WT_SESSION_IMPL *session;
 	WT_CONNECTION_IMPL *conn;
 	PMEM_BUF* buf = pmw->pbuf;
 	PMEM_FLUSHER* flusher;
 	
 	uint32_t i, session_flags;
 
-	session = pmw->session;
+	//session = pmw->session;
 	conn = S2C(session);
+	conn->pmw = pmw;
 
 	flusher = (PMEM_FLUSHER*) (
 			malloc(sizeof(PMEM_FLUSHER)));
@@ -2634,15 +2583,10 @@ WT_RET(__wt_cond_alloc(session, "flusher_is_all_closed", &flusher->is_all_closed
 	printf("======>   PMEM_INFO: start %zu flusher threads\n", size);
 	for (i = 0; i < size; ++i) {
 		//start the worker threads
-
-		//FLUSHER_THREAD_PARAM param;
-		//param.flusher_idx = i;
-		//param.pmw = pmw;
-
 		//WT_RET(__wt_thread_create(session, &flusher->worker_tids[i],
-		//    pm_flusher_worker, &param));
+		//    pm_flusher_worker, pmw));
 		WT_RET(__wt_thread_create(session, &flusher->worker_tids[i],
-		    pm_flusher_worker, pmw));
+		    pm_flusher_worker, session));
 	}
 	
 
@@ -2652,18 +2596,18 @@ WT_RET(__wt_cond_alloc(session, "flusher_is_all_closed", &flusher->is_all_closed
 // Close the flusher
 // ////////////////////////////////////
 int
-pm_buf_flusher_close(
-		PMEM_WRAPPER*	pmw) {
+pm_buf_flusher_close(PMEM_WRAPPER*	pmw,
+				WT_SESSION_IMPL *session){
 
 	int ret = 0;
 
-	WT_SESSION_IMPL *session;
+	//WT_SESSION_IMPL *session;
 	//WT_SESSION *wt_session;
 	PMEM_BUF*	buf;
 	PMEM_FLUSHER* flusher;
 	ulint i;
 	
-	session = pmw->session;
+	//session = pmw->session;
 	buf = pmw->pbuf;
 	flusher = buf->flusher;
 	
@@ -2744,10 +2688,16 @@ pm_buf_flusher_close(
 //		arg: the pointer to the session of the caller thread
 static void* pm_flusher_worker (void* arg) {
 	WT_SESSION_IMPL *session;
+	WT_CONNECTION_IMPL *conn;
 	size_t select_i;
 	ulint flusher_idx;
 	//int lock_ret;
-	PMEM_WRAPPER* pmw = (PMEM_WRAPPER*) arg;
+	
+	session = (WT_SESSION_IMPL*) arg;
+	//PMEM_WRAPPER* pmw = (PMEM_WRAPPER*) arg;
+	conn = S2C(session);
+	PMEM_WRAPPER* pmw = conn->pmw;
+
 	assert(pmw);
 
 	PMEM_FLUSHER* flusher = pmw->pbuf->flusher;

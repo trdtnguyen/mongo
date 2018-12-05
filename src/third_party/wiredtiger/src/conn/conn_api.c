@@ -11,6 +11,9 @@
 #if defined (UNIV_PMEMOBJ_BUF)
 #include <assert.h>
 char  PMEM_FILE_PATH [PMEM_MAX_FILE_NAME_LENGTH];
+PMEM_WRAPPER* gb_pmw = NULL;
+
+extern bool is_skip_first_open; //defined in wirediger_kv_engine.cpp
 #endif
 
 /*
@@ -2693,7 +2696,16 @@ wiredtiger_open(const char *home, WT_EVENT_HANDLER *event_handler,
 #if defined (UNIV_PMEMOBJ_BUF)
 	//(1) Get config variables
 	//TODO:
-	PMEM_WRAPPER* gb_pmw;
+	if (is_skip_first_open){
+		//is_skip_first_open = false;
+		goto skip_create_pm;
+	}
+	//if (gb_pmw != NULL){
+	//	//gb_pmw->session = session;
+	//	goto skip_create_pm;
+	//}
+	//Create PM
+	PMEM_WRAPPER* local_pmw;
 	size_t pool_size = 16384;
 	size_t buf_size = 256;
 	//Get the catagory 
@@ -2708,11 +2720,13 @@ wiredtiger_open(const char *home, WT_EVENT_HANDLER *event_handler,
 
 	//(2)Create PMEMOBJ
 	sprintf(PMEM_FILE_PATH, "%s/%s","/mnt/pmem1", PMEMOBJ_FILE_NAME);
+	//fix bug: run with --nojournal will open wiredtiger two time
 	//create new pmemobj or open the existed one
-	gb_pmw = pm_wrapper_create(session, PMEM_FILE_PATH, pool_size);
-	assert(gb_pmw);
-	
-	conn->pmw = gb_pmw;
+	local_pmw = pm_wrapper_create(session, PMEM_FILE_PATH, pool_size);
+	assert(local_pmw);
+	gb_pmw = local_pmw;
+	gb_pmw->session = session;
+	//conn->pmw = gb_pmw;
 
 	int check_pmem = pmemobj_check(PMEM_FILE_PATH, POBJ_LAYOUT_NAME(my_pmemobj));
 	if (check_pmem == -1) {
@@ -2812,13 +2826,16 @@ wiredtiger_open(const char *home, WT_EVENT_HANDLER *event_handler,
 
 	//(3) init PM, create flusher threads inside pm_wrapper_buf_alloc_or_open()
 	//ret  = pm_wrapper_buf_alloc_or_open(gb_pmw, buf_size, 32*1024);
-	ret  = pm_wrapper_buf_alloc_or_open(gb_pmw, buf_size, PMEM_MAX_PAGE_SIZE);
+	ret  = pm_wrapper_buf_alloc_or_open(gb_pmw, session, buf_size, PMEM_MAX_PAGE_SIZE);
 	printf("After pm_wrapper_buf_alloc_or_open() ret %d\n", ret);
 
 	if (ret != PMEM_SUCCESS) {
 		printf("pm_wrapper_buf_alloc_or_open() has errrors inside wiredtiger_open()\n");
 		exit(0);
 	}
+//skip_create_pm:
+	conn->pmw = gb_pmw;
+skip_create_pm:
 #endif //if defined (UNIV_PMEMOBJ_BUF)
 	/*
 	 * Load the extensions after initialization completes; extensions expect

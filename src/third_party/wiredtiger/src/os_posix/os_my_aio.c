@@ -715,7 +715,7 @@ static void* pm_aio_worker (void* arg) {
                 printf("\t[4.2] After collect  plist_out %zu seg_idx = %zu\n", plist_out->list_id, seg_idx);
 #endif        
                 if (seg_wrapper->io_finished == seg_wrapper->io_pending){
-                    handle_AIO_seg_complete(pmw, aio, seg_idx, plist_out);
+                    handle_AIO_seg_complete(pmw, session, aio, seg_idx, plist_out);
 
 
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)
@@ -775,6 +775,7 @@ static void* pm_aio_worker (void* arg) {
 
 void handle_AIO_seg_complete(
 		PMEM_WRAPPER *pmw, 
+		WT_SESSION_IMPL* session,
 				AIO* aio,
 				ulint seg_idx,
 				PMEM_BUF_BLOCK_LIST* plist
@@ -789,7 +790,7 @@ void handle_AIO_seg_complete(
 	Slot* slot;
     //int lock_ret;
 
-	WT_SESSION_IMPL *session = pmw->session;
+	//WT_SESSION_IMPL *session = pmw->session;
     //WT_SESSION_IMPL *worker_session = aio->worker_sessions[seg_idx];
 	PMEM_SEG_WRAPPER* seg_wrapper;
 	seg_wrapper = &aio->seg_wrapper_arr[seg_idx];
@@ -886,7 +887,7 @@ void handle_AIO_seg_complete(
 #endif        
 	//(1) Handle the finish list in pm
 	//////////////////////////////////////////////////
-	pm_handle_finished_list_with_flusher(pmw, plist);
+	pm_handle_finished_list_with_flusher(pmw, session, plist);
 	/////////////////////////////////////////////////
 	
 #if defined (UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG)

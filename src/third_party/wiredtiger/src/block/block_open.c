@@ -7,7 +7,10 @@
  */
 
 #include "wt_internal.h"
-
+#if defined (UNIV_PMEMOBJ_BUF)
+extern PMEM_WRAPPER* gb_pmw;
+extern bool is_skip_first_open;
+#endif
 static int __desc_read(WT_SESSION_IMPL *, WT_BLOCK *);
 
 /*
@@ -310,8 +313,9 @@ __wt_desc_write(WT_SESSION_IMPL *session, WT_FH *fh, uint32_t allocsize)
 
 #if defined (UNIV_PMEMOBJ_BUF)
 	printf("write metadata for file %s offset 0 size %zu\n", fh->name, (size_t)allocsize);
-	//ret = pm_buf_write_with_flusher(conn->pmw, fh->name, fh->name_hash, (off_t)0, (size_t)allocsize, (byte*)desc);
-	ret = pm_buf_write_with_flusher(conn->pmw, fh->name, fh->name_hash, (off_t)0, 0, (size_t)allocsize, (byte*)desc);
+	//ret = pm_buf_write_with_flusher(conn->pmw, fh->name, fh->name_hash, (off_t)0, 0, (size_t)allocsize, (byte*)desc);
+	//ret = pm_buf_write_with_flusher(gb_pmw, fh->name, fh->name_hash, (off_t)0, 0, (size_t)allocsize, (byte*)desc);
+	ret = pm_buf_write_with_flusher(gb_pmw, session, fh->name, fh->name_hash, (off_t)0, 0, (size_t)allocsize, (byte*)desc);
 
 	if (ret != PMEM_SUCCESS){
 		printf("Inside __wt_desc_write(), pm_buf_write() has error! Use the original __wt_write()\n");
@@ -350,17 +354,21 @@ __desc_read(WT_SESSION_IMPL *session, WT_BLOCK *block)
 
 	/* Read the first allocation-sized block and verify the file format. */
 #if defined (UNIV_PMEMOBJ_BUF)
-	const PMEM_BUF_BLOCK* pblock =
-		pm_buf_read(conn->pmw, block->fh->name, block->fh->name_hash, (off_t)0, (size_t)block->allocsize, buf->mem);
-#if defined (UNIV_PMEMOBJ_BUF_DEBUG)
-	if (strstr(block->fh->name,"ycsb") != NULL)
-		printf("Inside __desc_read, pm_buf_read file %s offset 0 size %zu result %d\n",
-				block->fh->name, (size_t)block->allocsize, (pblock!=NULL));
-#endif //UNIV_PMEMOBJ_BUF_DEBUG
-	if (pblock == NULL) {
+	if (is_skip_first_open){
 		//Read the block from disk as in the original
 		WT_ERR(__wt_read(session,
 					block->fh, (wt_off_t)0, (size_t)block->allocsize, buf->mem));
+	}
+	else {
+		const PMEM_BUF_BLOCK* pblock =
+			//pm_buf_read(conn->pmw, block->fh->name, block->fh->name_hash, (off_t)0, (size_t)block->allocsize, buf->mem);
+			//pm_buf_read(gb_pmw, block->fh->name, block->fh->name_hash, (off_t)0, (size_t)block->allocsize, buf->mem);
+			pm_buf_read(gb_pmw, session, block->fh->name, block->fh->name_hash, (off_t)0, (size_t)block->allocsize, buf->mem);
+		if (pblock == NULL) {
+			//Read the block from disk as in the original
+			WT_ERR(__wt_read(session,
+						block->fh, (wt_off_t)0, (size_t)block->allocsize, buf->mem));
+		}
 	}
 #else //original
 	WT_ERR(__wt_read(session,

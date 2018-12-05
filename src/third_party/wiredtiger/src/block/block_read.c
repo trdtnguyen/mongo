@@ -9,6 +9,8 @@
 #include "wt_internal.h"
 #if defined (UNIV_PMEMOBJ_BUF)
 #include <assert.h>
+extern PMEM_WRAPPER* gb_pmw; //defined in conn_api.c
+extern bool is_skip_first_open;
 #endif
 /*
  * __wt_bm_preload --
@@ -204,10 +206,17 @@ __wt_block_read_off_blind(
 	 */
 	WT_RET(__wt_buf_init(session, buf, block->allocsize));
 #if defined (UNIV_PMEMOBJ_BUF)
-	const PMEM_BUF_BLOCK* pblock =
-		pm_buf_read(conn->pmw, block->fh->name, block->fh->name_hash, offset, block->allocsize, buf->mem);
-	if (pblock == NULL){
-		WT_RET(__wt_read(session, block->fh, offset, (size_t)block->allocsize, buf->mem));
+	if (is_skip_first_open){
+			WT_RET(__wt_read(session, block->fh, offset, (size_t)block->allocsize, buf->mem));
+	}
+	else {
+		const PMEM_BUF_BLOCK* pblock =
+			pm_buf_read(gb_pmw, session, block->fh->name, block->fh->name_hash, offset, block->allocsize, buf->mem);
+		//pm_buf_read(gb_pmw, block->fh->name, block->fh->name_hash, offset, block->allocsize, buf->mem);
+		//pm_buf_read(conn->pmw, block->fh->name, block->fh->name_hash, offset, block->allocsize, buf->mem);
+		if (pblock == NULL){
+			WT_RET(__wt_read(session, block->fh, offset, (size_t)block->allocsize, buf->mem));
+		}
 	}
 #else
 	WT_RET(__wt_read(
@@ -271,15 +280,22 @@ __wt_block_read_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 	}
 	WT_RET(__wt_buf_init(session, buf, bufsize));
 #if defined(UNIV_PMEMOBJ_BUF)
-	//skip read metadata file
-	const PMEM_BUF_BLOCK* pblock =
-		pm_buf_read(conn->pmw, block->fh->name, block->fh->name_hash, offset, size, buf->mem);
-//#if defined(CHECKSUM_DEBUG)
-//	if (strstr(block->fh->name, "ycsb") != NULL && pblock!=NULL )
-//		printf("pm_buf_read file %s offset %zu size %zu result %d\n", block->fh->name, offset, (size_t)size, (pblock!=NULL));
-//#endif
-	if (pblock == NULL){
+	const PMEM_BUF_BLOCK* pblock;
+	if (is_skip_first_open){
+		//Read as the original
 		WT_RET(__wt_read(session, block->fh, offset, size, buf->mem));
+	}
+	else {
+		//skip read metadata file
+		pblock =
+			pm_buf_read(gb_pmw, session, block->fh->name, block->fh->name_hash, offset, size, buf->mem);
+		//#if defined(CHECKSUM_DEBUG)
+		//	if (strstr(block->fh->name, "ycsb") != NULL && pblock!=NULL )
+		//		printf("pm_buf_read file %s offset %zu size %zu result %d\n", block->fh->name, offset, (size_t)size, (pblock!=NULL));
+		//#endif
+		if (pblock == NULL){
+			WT_RET(__wt_read(session, block->fh, offset, size, buf->mem));
+		}
 	}
 #else
 	WT_RET(__wt_read(session, block->fh, offset, size, buf->mem));

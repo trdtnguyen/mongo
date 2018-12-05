@@ -236,7 +236,8 @@ pm_wrapper_create(
 		const size_t	pool_size);
 
 void
-pm_wrapper_free(PMEM_WRAPPER* pmw);
+pm_wrapper_free(PMEM_WRAPPER* pmw,
+		WT_SESSION_IMPL* session);
 
 
 PMEMoid pm_pop_alloc_bytes(PMEMobjpool* pop, size_t size);
@@ -245,10 +246,13 @@ void pm_pop_free(PMEMobjpool* pop);
 int
 pm_wrapper_buf_alloc_or_open(
 		PMEM_WRAPPER*		pmw,
+		WT_SESSION_IMPL *session,
 		const size_t		buf_size,
 		const size_t		page_size);
 
-int pm_wrapper_buf_close(PMEM_WRAPPER* pmw);
+int 
+pm_wrapper_buf_close(PMEM_WRAPPER* pmw,
+					WT_SESSION_IMPL *session);
 
 int
 pm_wrapper_buf_alloc(
@@ -548,6 +552,7 @@ pm_buf_single_list_init(
 int
 pm_buf_write_with_flusher_old2(
 		   	PMEM_WRAPPER*	pmw,
+			WT_SESSION_IMPL* session,
 			const char*		fname,
 		   	uint64_t		name_hash,
 		   	off_t			offset,
@@ -557,6 +562,7 @@ pm_buf_write_with_flusher_old2(
 int
 pm_buf_write_with_flusher_old1(
 		   	PMEM_WRAPPER*	pmw,
+			WT_SESSION_IMPL* session,
 			const char*		fname,
 		   	uint64_t		name_hash,
 		   	off_t			offset,
@@ -566,6 +572,7 @@ pm_buf_write_with_flusher_old1(
 int
 pm_buf_write_with_flusher(
 		   	PMEM_WRAPPER*	pmw,
+			WT_SESSION_IMPL* session,
 			const char*		fname,
 		   	uint64_t		name_hash,
 		   	off_t			offset,
@@ -587,6 +594,7 @@ pm_buf_write_first_page(
 const PMEM_BUF_BLOCK*
 pm_buf_read(
 		   	PMEM_WRAPPER*	pmw,
+			WT_SESSION_IMPL* session,
 			const char*		fname,
 			uint64_t		name_hash,
 		   	const off_t		offset,
@@ -607,18 +615,22 @@ pm_buf_flush_list(
 		   	PMEM_BUF_BLOCK_LIST*	plist);
 void
 pm_buf_resume_flushing(
-			PMEM_WRAPPER*			pmw);
+			PMEM_WRAPPER*			pmw,
+			WT_SESSION_IMPL* session
+			);
 		   
 
 
 void
 pm_buf_handle_full_hashed_list(
 	PMEM_WRAPPER*		pmw,
+	WT_SESSION_IMPL* session,
 	uint64_t			hashed);
 
 void
 pm_buf_assign_flusher(
 	PMEM_WRAPPER*				pmw,
+	WT_SESSION_IMPL* session,
 	PMEM_BUF_BLOCK_LIST*	phashlist);
 
 void
@@ -670,9 +682,11 @@ struct __flusher_thread_param {
 int
 pm_flusher_init(
 				PMEM_WRAPPER*		pmw, 
+				WT_SESSION_IMPL *session,
 				const size_t	size);
 int
-pm_buf_flusher_close(PMEM_WRAPPER*	pmw);
+pm_buf_flusher_close(PMEM_WRAPPER*	pmw,
+				WT_SESSION_IMPL *session);
 
 
 // AIO 
@@ -710,6 +724,7 @@ void pm_buf_print_lists_info(PMEM_WRAPPER* pmw);
 void
 pm_handle_finished_block(
 	   	PMEM_WRAPPER*			pmw,
+		WT_SESSION_IMPL* session,
 	   	PMEM_BUF_BLOCK* pblock);
 
 
@@ -717,11 +732,13 @@ pm_handle_finished_block(
 void
 pm_handle_finished_block_with_flusher(
 	   	PMEM_WRAPPER*			pmw,
+		WT_SESSION_IMPL* session,
 	   	PMEM_BUF_BLOCK*		pblock);
 
 void
 pm_handle_finished_list_with_flusher(
 	   	PMEM_WRAPPER*			pmw,
+		WT_SESSION_IMPL* session,
 	   	PMEM_BUF_BLOCK_LIST*		pflush_list);
 //version 2 is implemented in buf0flu.cc that handle threads slot
 void

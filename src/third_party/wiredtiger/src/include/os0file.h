@@ -161,6 +161,7 @@ static void* pm_aio_worker (void* arg);
 
 void handle_AIO_seg_complete(
 		PMEM_WRAPPER *pmw, 
+		WT_SESSION_IMPL* session,
 				AIO* aio,
 				ulint seg_idx,
 				PMEM_BUF_BLOCK_LIST* plist_in

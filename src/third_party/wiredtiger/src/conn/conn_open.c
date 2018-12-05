@@ -7,7 +7,10 @@
  */
 
 #include "wt_internal.h"
-
+#if defined (UNIV_PMEMOBJ_BUF)
+extern bool is_skip_first_open; //defined in src/mongo/db/storage/wiredtiger/wiredtiger_kv_engine.cpp
+extern PMEM_WRAPPER* gb_pmw; //defined in conn_api.c
+#endif
 /*
  * __wt_connection_open --
  *	Open a connection.
@@ -114,7 +117,16 @@ __wt_connection_close(WT_CONNECTION_IMPL *conn)
 	/* Shut down metadata tracking. */
 	WT_TRET(__wt_meta_track_destroy(session));
 #if defined (UNIV_PMEMOBJ_BUF)
-	pm_wrapper_buf_close((PMEM_WRAPPER*)conn->pmw);
+	if (is_skip_first_open){
+		//we skip wiredtiger_open when --nojournal is on,
+		//so we don't call pm_wrapper_buf_close() in this case
+		is_skip_first_open = false;
+	}
+	else {
+		//pm_wrapper_buf_close((PMEM_WRAPPER*)conn->pmw);
+		pm_wrapper_buf_close(gb_pmw, session);
+	}
+	//pm_wrapper_free((PMEM_WRAPPER*)conn->pmw);
 #endif
 	/*
 	 * Now that all data handles are closed, tell logging that a checkpoint

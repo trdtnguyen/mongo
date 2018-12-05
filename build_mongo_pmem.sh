@@ -2,8 +2,8 @@
 
 MONGO_HOME=/home/vldb/mongo-pmem
 
-IS_DEBUG=0
-#IS_DEBUG=1
+#IS_DEBUG=0
+IS_DEBUG=1
 
 BUILD_NAME=
 #BUILD_FLAGS="-Imongo/db/pmem/ -DUNIV_PMEMOBJ_BUF"

@@ -48,10 +48,12 @@
 //#include "third_party/wiredtiger/src/pmem/my_pmemobj.h"
 //#include <third_party/wiredtiger/src/include/my_pmemobj.h>
 
-//char  PMEM_FILE_PATH [PMEM_MAX_FILE_NAME_LENGTH];
+/*Note: We cannot include my_pmemobj.h or declare PMEM_WRAPPER here because
+ * we've implemented it in src/third_party/wiredtiger. This file is for mongo, and 
+ * wiredtiger_kv_engine is the interface that mongo access to wiredtiger storage engine*/
 //extern PMEM_WRAPPER* gb_pmw;
 //PMEM_WRAPPER* gb_pmw;
-
+bool is_skip_first_open = false;
 #endif
 
 
@@ -543,6 +545,7 @@ WiredTigerKVEngine::WiredTigerKVEngine(const std::string& canonicalName,
         invariant(!_durable);
         ss << "readonly=true,";
     }
+
     if (!_durable && !_readOnly) {
         // If we started without the journal, but previously used the journal then open with the
         // WT log enabled to perform any unclean shutdown recovery and then close and reopen in
@@ -551,6 +554,11 @@ WiredTigerKVEngine::WiredTigerKVEngine(const std::string& canonicalName,
             string config = ss.str();
             log() << "Detected WT journal files.  Running recovery from last checkpoint.";
             log() << "journal to nojournal transition config: " << config;
+#if defined (UNIV_PMEMOBJ_BUF)
+			//skip the first wiredtiger_open() when --nojournal, we allocate 
+			//pmem structures when it later reopen 
+			is_skip_first_open = true;
+#endif
             int ret = wiredtiger_open(
                 path.c_str(), _eventHandler.getWtEventHandler(), config.c_str(), &_conn);
             if (ret == EINVAL) {
@@ -591,6 +599,7 @@ WiredTigerKVEngine::WiredTigerKVEngine(const std::string& canonicalName,
 
 	//pm_wrapper_buf_alloc_or_open(gb_pmw, buf_size, 16*1024);
 
+	is_skip_first_open = false;
 #endif //UNIV_PMEMOJB_BUF
     log() << "wiredtiger_open config: " << config;
     openWiredTiger(path, _eventHandler.getWtEventHandler(), config, &_conn, &_fileVersion);

@@ -7,7 +7,9 @@
  */
 
 #include "wt_internal.h"
-
+#if defined (UNIV_PMEMOBJ_BUF)
+extern bool is_skip_first_open;
+#endif
 static int __ckpt_process(WT_SESSION_IMPL *, WT_BLOCK *, WT_CKPT *);
 static int __ckpt_string(
 	WT_SESSION_IMPL *, WT_BLOCK *, const uint8_t *, WT_ITEM *);
@@ -477,8 +479,10 @@ __ckpt_process(WT_SESSION_IMPL *session, WT_BLOCK *block, WT_CKPT *ckptbase)
 	if ( strstr(block->name, "ycsb") != NULL){
 		printf("checkpoint for data ....\n");
 	}
-	PMEM_WRAPPER*   pmw = conn->pmw;
-	pmw->pbuf->is_capture_ckpt = true;
+	if (!is_skip_first_open){
+		PMEM_WRAPPER*   pmw = conn->pmw;
+		pmw->pbuf->is_capture_ckpt = true;
+	}
 #endif
 	/*
 	 * To delete a checkpoint, we'll need checkpoint information for it and

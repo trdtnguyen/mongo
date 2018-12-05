@@ -126,17 +126,19 @@ pm_wrapper_create(
 err:
 	printf("PMEMOBJ_ERROR: error in pm_create_PMEMwrapper");
 	if(pmw)
-		pm_wrapper_free(pmw);
+		pm_wrapper_free(pmw, session);
 	return NULL;
 }
 
 /*
  *This function free things allocated in DRAM
  * */
-void pm_wrapper_free(PMEM_WRAPPER* pmw){
+void pm_wrapper_free(PMEM_WRAPPER* pmw,
+		WT_SESSION_IMPL* session
+		){
 #if defined (UNIV_PMEMOBJ_BUF)
 	//PMEM buf
-	pm_wrapper_buf_close(pmw);
+	pm_wrapper_buf_close(pmw, session);
 	pmw->pbuf = NULL;
 #endif 
 
