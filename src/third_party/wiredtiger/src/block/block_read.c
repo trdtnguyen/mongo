@@ -280,7 +280,7 @@ __wt_block_read_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 	}
 	WT_RET(__wt_buf_init(session, buf, bufsize));
 #if defined(UNIV_PMEMOBJ_BUF)
-	const PMEM_BUF_BLOCK* pblock;
+	const PMEM_BUF_BLOCK* pblock = NULL;
 	if (is_skip_first_open){
 		//Read as the original
 		WT_RET(__wt_read(session, block->fh, offset, size, buf->mem));
