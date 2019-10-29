@@ -10,6 +10,8 @@ BUILD_NAME=
 #BUILD_FLAGS="-Ithird_party/wiredtiger/src/pmem/"
 #BUILD_FLAGS="-Ithird_party/wiredtiger/src/pmem/ -DUNIV_PMEMOBJ_BUF -DUNIV_PMEMOBJ_BUF_FLUSHER -DUNIV_PMEMOBJ_BUF_PARTITION"
 
+# Change the build macro in SConstruct file
+
 cd $MONGO_HOME
 
 #echo ${BUILD_FLAGS}
