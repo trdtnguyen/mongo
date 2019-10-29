@@ -347,12 +347,13 @@ __wt_block_read_off(WT_SESSION_IMPL *session, WT_BLOCK *block,
 #if defined(UNIV_PMEMOBJ_BUF)
 	printf("CHECKSUM ERROR #1: read size %"PRIu32" offset %zu checksum %"PRIu32" page_checksum %"PRIu32" is read from pmem %d \n",
 			size, offset, checksum, page_checksum, (pblock != NULL));
-		//because WT update blk->checksum when write a block to disk, it get the different checksum value every next __wt_checksum()
-		//So, it's ok if swap.checksum == checksum (we read what we written)
+		/*because WT update blk->checksum when write a block to disk, it get the different checksum value every next __wt_checksum()
+		* So, it's ok if swap.checksum == checksum (we read what we written) 
+		*/
 		//__wt_page_header_byteswap(buf->mem);
 		//return (0);
 	assert(0);
-#endif
+#endif //UNIV_PMEMOBJ_BUF
 		if (!F_ISSET(session, WT_SESSION_QUIET_CORRUPT_FILE))
 			__wt_errx(session,
 			    "read checksum error for %" PRIu32 "B block at "

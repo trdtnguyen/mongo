@@ -931,6 +931,7 @@ pm_buf_write_with_flusher(
 	
 	if (strstr (fname, "ycsb") == NULL  
 			) {
+		/*this version only work for ycsb*/
 		return PMEM_ERROR;
 	}
 
@@ -1038,7 +1039,8 @@ pm_buf_write_with_flusher(
 	page_checksum = __wt_checksum((void*)src_data, size);
 
 	printf("======== DAT in pmem_buf_write, file %s offset %zu checksum %u page_checksum_prev %u blk_checksum %u page_checksum %u size %zu hash_list id %zu hashed %zu \n ", fname, offset, checksum, page_checksum_prev, blk_checksum, page_checksum, size, phashlist->list_id, hashed);
-#endif
+#endif //CHECKSUM_DEBUG
+
 	// (2) search for the FREE block to write on, if overlap occur, invalid previous  write 
 	ulint i_free = 0;
 	bool is_first_free = true;

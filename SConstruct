@@ -3099,7 +3099,8 @@ def doConfigure(myenv):
             "BOOST_SYSTEM_NO_DEPRECATED",
             "BOOST_MATH_NO_LONG_DOUBLE_MATH_FUNCTIONS",
 			#Remove below lines for building the original WT
-            "UNIV_PMEMOBJ_BUF",
+            #"UNIV_PMEMOBJ_BUF",
+            #"UNIV_PMEMOBJ_BUF_DEBUG",
 			#"UNIV_PMEMOBJ_BUF_RECOVERY_DEBUG",
 			#"CHECKSUM_DEBUG",
 			"O_DIRECT",
